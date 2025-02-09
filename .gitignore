@@ -1,1 +1,23 @@
+# Cache directories
 cache/
+__pycache__/
+*.py[cod]
+
+# Environment directories
+venv/
+env/
+.env
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Local development files
+*.log
+.DS_Store

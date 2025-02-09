@@ -1,43 +1,22 @@
 #!/bin/bash
 
-# Script: booksearher.sh
-# Description: Search for audiobooks and ebooks using Prowlarr
-# Usage: ./booksearcher.sh [-d|--debug] [-p|--protocol] [-i|--interactive] [-h|--headless -k kind] [search term]
-
-###############################################################################
-#                           USER-EDITABLE VARIABLES                           #
-###############################################################################
-
-# Prowlarr configuration
-PROWLARR_URL="${PROWLARR_URL:-https://prowlarr.homelab.rip}"  # Change this to your Prowlarr instance URL
-API_KEY="${API_KEY:-446137b137124aeb895da6c31afe4f10}"           # Replace with your Prowlarr API key
-
-# Get script location
+# Get script and base directories
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
 CACHE_DIR="$BASE_DIR/cache"
-CACHE_MAX_AGE=604800  # 1 week in seconds
+LIB_DIR="$SCRIPT_DIR/lib"
+CONFIG_DIR="$BASE_DIR/config"
 
-###############################################################################
-#                                 SCRIPT BODY                                 #
-###############################################################################
+# Source configuration and library files
+source "$CONFIG_DIR/settings.conf"
+source "$LIB_DIR/api.sh"
+source "$LIB_DIR/cache.sh"
+source "$LIB_DIR/ui.sh"
+source "$LIB_DIR/validation.sh"
 
-# Define common icons
-get_protocol_icon() {
-    case "$1" in
-        "usenet") echo "📡" ;;
-        "torrent") echo "🧲" ;;
-        *) echo "📡 & 🧲" ;;
-    esac
-}
-
-get_kind_icon() {
-    case "$1" in
-        "Audiobooks") echo "🎧" ;;
-        "eBook") echo "📚" ;;
-        *) echo "🎧+📚" ;;
-    esac
-}
+# Script: booksearher.sh
+# Description: Search for audiobooks and ebooks using Prowlarr
+# Usage: ./booksearcher.sh [-d|--debug] [-p|--protocol] [-i|--interactive] [-h|--headless -k kind] [search term]
 
 # Check if jq is installed
 if ! command -v jq &> /dev/null; then
@@ -50,216 +29,6 @@ if [[ ! "$PROWLARR_URL" =~ ^https?:// ]]; then
     echo "Error: Invalid Prowlarr URL. Must start with http:// or https://"
     exit 1
 fi
-
-# Core API functions
-make_api_call() {
-    local url="$1"
-    local method="${2:-GET}"
-    local data="$3"
-    
-    if [ "$method" = "POST" ]; then
-        curl -s -H "X-Api-Key: $API_KEY" \
-             -H "Content-Type: application/json" \
-             -X POST \
-             -d "$data" \
-             "$url"
-    else
-        curl -s -H "X-Api-Key: $API_KEY" \
-             -H "Accept: application/json" \
-             "$url"
-    fi
-}
-
-# Add new functions after make_api_call()
-cleanup_cache() {
-    find "$CACHE_DIR" -type d -name "search_*" -mtime +7 -exec rm -rf {} \;
-}
-
-list_cached_searches() {
-    echo "Recent searches:"
-    echo "────────────────────────────────────"
-    
-    # Check if any cache folders exist
-    shopt -s nullglob
-    folders=("$CACHE_DIR"/search_*)
-    shopt -u nullglob
-    
-    if [ ${#folders[@]} -eq 0 ]; then
-        echo "No cached searches found."
-        echo "────────────────────────────────────"
-        return 0
-    fi
-    
-    for search_dir in "${folders[@]}"; do
-        search_id=$(basename "$search_dir" | sed 's/search_//')
-        meta_file="$search_dir/meta"
-        # Create a temporary environment to avoid variable pollution
-        (
-            unset SEARCH_TERM MEDIA_KIND PROTOCOL TIMESTAMP MODE
-            source "$meta_file"
-            local kind_icon=$(get_kind_icon "$MEDIA_KIND")
-            local proto_icon=$(get_protocol_icon "$PROTOCOL")
-            echo "🔢 Search #$search_id"
-            echo "🔍 Term: ${SEARCH_TERM:-N/A}"
-            echo "🧩 Kind: $kind_icon ${MEDIA_KIND:-N/A}"
-            echo "🔌 Protocol: $proto_icon ${PROTOCOL:-both}"
-            echo "⏰ When: ${TIMESTAMP:-N/A}"
-            echo "🎮 Mode: ${MODE:-N/A}"
-            echo "────────────────────────────────────"
-        )
-    done
-}
-
-clear_cache() {
-    echo "Clearing cache directory..."
-    rm -rf "$CACHE_DIR"/search_*
-    rm -f "$CACHE_DIR"/last_id
-    echo "Cache cleared."
-}
-
-get_next_search_id() {
-    local current_id=0
-    local id_file="$CACHE_DIR/last_id"
-    
-    if [ -f "$id_file" ]; then
-        current_id=$(cat "$id_file")
-    fi
-    
-    # Increment and wrap around at 999
-    current_id=$(( (current_id + 1) % 1000 ))
-    echo "$current_id" > "$id_file"
-    echo "$current_id"
-}
-
-save_search_results() {
-    local search_id="$1"
-    local results="$2"
-    local search_term="$3"
-    local media_kind="$4"    # Changed from media_type
-    local protocol="$5"
-    local mode="$6"
-    local timestamp=$(date "+%Y-%m-%d %H:%M:%S")
-    
-    # Create search directory
-    local search_dir="$CACHE_DIR/search_${search_id}"
-    mkdir -p "$search_dir"
-    
-    # Save search metadata
-    cat > "$search_dir/meta" <<EOF
-SEARCH_TERM="$search_term"
-MEDIA_KIND="$media_kind"    # Changed for consistency
-PROTOCOL="${protocol:-both}"
-TIMESTAMP="$timestamp"
-MODE="$mode"
-EOF
-    
-    # Save results
-    echo "$results" > "$search_dir/results.json"
-}
-
-load_search_results() {
-    local search_id="$1"
-    local search_dir="$CACHE_DIR/search_${search_id}"
-    local results_file="$search_dir/results.json"
-    local meta_file="$search_dir/meta"
-    
-    if [ ! -f "$results_file" ] || [ ! -f "$meta_file" ]; then
-        echo "Error: Search #${search_id} not found or expired" >&2
-        return 1
-    fi
-    
-    # Load metadata if needed
-    if [ -z "$LOADED_META" ]; then
-        source "$meta_file"
-        LOADED_META=1
-    fi
-    
-    cat "$results_file"
-}
-
-# Function to grab a release
-grab_release() {
-    local release_data=$1
-
-    echo "Sending to download client..."
-    title=$(echo "$release_data" | jq -r '.title')
-    guid=$(echo "$release_data" | jq -r '.guid')
-    indexer_id=$(echo "$release_data" | jq -r '.indexerId|tostring')
-    
-    # Construct the JSON payload
-    json_payload="{\"guid\": \"$guid\", \"indexerId\": $indexer_id}"
-    # Make the API request and capture both headers and body
-    response=$(make_api_call "${PROWLARR_URL}/api/v1/search" "POST" "$json_payload")
-
-    if [ "$DEBUG" = "true" ]; then
-        echo "DEBUG: API Response:"
-        echo "$response" | jq '.'
-    fi
-
-    if echo "$response" | jq -e 'has("rejected")' >/dev/null; then
-        echo "Error: Download rejected"
-        echo "$response" | jq -r '.rejected'
-    else
-        echo "────────────────────────────────────"
-        echo "✨ Successfully sent to download client!"
-        echo "📥 Title:"
-        echo "$title" | fold -s -w 60 | sed 's/^/    /'
-        echo "────────────────────────────────────"
-    fi
-    exit 0
-}
-
-# Function to show spinner during search
-show_spinner() {
-    local pid=$1
-    local delay=0.2
-    local spinstr='|/-\'  # Simple rotating line
-    while ps a | awk '{print $1}' | grep -q "$pid"; do
-        local temp=${spinstr#?}
-        printf " %c " "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
-        printf "\b\b\b"
-    done
-    printf "   \b\b\b"
-}
-
-# Function to quit the script
-quit_script() {
-    echo "Exiting script..."
-    exit 0
-}
-
-# Function to get tag IDs for audiobooks and ebooks
-get_tag_ids() {
-    local response
-    
-    response=$(make_api_call "$PROWLARR_URL/api/v1/tag")
-    
-    if [ -z "$response" ]; then
-        echo "Error: No tags found in Prowlarr" >&2
-        return 1
-    fi
-    
-    AUDIOBOOKS_TAG_ID=$(echo "$response" | jq -r '.[] | select(.label | ascii_downcase == "audiobooks") | .id')
-    EBOOKS_TAG_ID=$(echo "$response" | jq -r '.[] | select(.label | ascii_downcase == "ebooks") | .id')
-    if [ -z "$AUDIOBOOKS_TAG_ID" ] || [ -z "$EBOOKS_TAG_ID" ]; then
-        echo "Error: Could not find 'audiobooks' or 'ebooks' tag in Prowlarr. Please create them." >&2
-        return 1
-    fi
-    
-    echo "$AUDIOBOOKS_TAG_ID $EBOOKS_TAG_ID"
-}
-
-# Function to validate tag ID
-validate_tag_id() {
-    local tag_id="$1"
-    if ! [[ "$tag_id" =~ ^[0-9]+$ ]]; then
-        echo "Error: Invalid tag ID: $tag_id. Must be a number." >&2
-        return 1
-    fi
-    return 0
-}
 
 # Parse command line arguments
 DEBUG=false

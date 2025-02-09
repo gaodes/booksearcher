@@ -14,19 +14,18 @@ source "$LIB_DIR/cache.sh"
 source "$LIB_DIR/ui.sh"
 source "$LIB_DIR/validation.sh"
 
-# Check if jq is installed
+# Initial checks
 if ! command -v jq &> /dev/null; then
     echo "Error: jq is required but not installed."
     exit 1
 fi
 
-# Validate Prowlarr URL
 if [[ ! "$PROWLARR_URL" =~ ^https?:// ]]; then
     echo "Error: Invalid Prowlarr URL. Must start with http:// or https://"
     exit 1
 fi
 
-# Parse command line arguments
+# Initialize variables
 DEBUG=false
 PROTOCOL_PROMPT=false
 MEDIA_TYPE_FLAG=""
@@ -35,12 +34,10 @@ PROTOCOL=""
 INTERACTIVE=false
 HEADLESS=false
 KIND=""
-
-# Add new variables to argument parsing section
 SEARCH_ID=""
 GRAB_NUMBER=""
 
-# Get all arguments after flags as search term
+# Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -d|--debug)

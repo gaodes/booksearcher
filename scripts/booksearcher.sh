@@ -218,10 +218,10 @@ if [ -n "$GRAB_NUMBER" ]; then
     echo "────────────────────────────────────"
     echo "🔢 Search #$SEARCH_ID"
     echo "🔍 Term: ${SEARCH_TERM}"
-    echo "🧩 Kind: $kind_icon ${MEDIA_KIND}"  # Changed from 📋 to 🧩
+    echo "🧩 Kind: $kind_icon ${MEDIA_KIND}"
     echo "🔌 Protocol: $proto_icon ${PROTOCOL:-both}"
     echo "⏰ When: ${TIMESTAMP}"
-    echo "🎮 Mode: ${MODE}"  # Changed from ⚙️ to 🎮
+    echo "🎮 Mode: ${MODE}"
     echo "────────────────────────────────────"
     echo
     

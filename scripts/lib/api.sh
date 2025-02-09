@@ -1,4 +1,3 @@
-
 # Core API functions
 make_api_call() {
     local url="$1"
@@ -71,4 +70,74 @@ grab_release() {
         echo "────────────────────────────────────"
     fi
     exit 0
+}
+
+format_search_results() {
+    local response="$1"
+    local prowlarr_url="$2"
+    local protocol="$3"
+    
+    local prowlarr_url_esc=$(printf '%s\n' "$prowlarr_url" | sed 's/[&/\]/\\&/g')
+    echo "$response" | jq -r --arg url "$prowlarr_url_esc" --arg proto "$protocol" '
+    def formatSize(bytes):
+        def _format(value):
+            if value < 10 then (value * 100 | floor) / 100
+            elif value < 100 then (value * 10 | floor) / 10
+            else value | floor
+            end;
+        
+        if bytes == 0 or bytes == null then "N/A"
+        elif bytes < 1024 then "\(_format(bytes))B"
+        elif bytes < 1024*1024 then "\(_format(bytes/1024))KB"
+        elif bytes < 1024*1024*1024 then "\(_format(bytes/1024/1024))MB"
+        elif bytes < 1024*1024*1024*1024 then "\(_format(bytes/1024/1024/1024))GB"
+        else "\(_format(bytes/1024/1024/1024/1024))TB"
+        end;
+    
+    # ...existing jq formatting functions...
+    
+    if type == "array" then
+        . | 
+        map(select($proto == "" or (.protocol|ascii_downcase) == ($proto|ascii_downcase))) |
+        sort_by(.size) | reverse | to_entries[] | 
+        "[\(.key + 1)] \(.value.title)\n" +
+        "\(makeSeparator("[\(.key + 1)] \(.value.title)"))\n" +
+        "📦 Size:         \(formatSize(.value.size))\n" +
+        "📅 Published:    \(.value.publishDate[:10] // "N/A")\n" +
+        "🔌 Protocol:     \(protocolIcon(.value.protocol)) \(.value.protocol // "N/A")\n" +
+        "🔍 Indexer:      \(.value.indexer)\n" +
+        if .value.protocol == "usenet" then
+        "📥 Grabs:        \(formatGrabs(.value))"
+        else
+        "⚡ Status:       \(formatGrabs(.value))"
+        end +
+        "\n\n"
+    else
+        "No valid results in response"
+    end'
+}
+
+process_search_results() {
+    local response="$1"
+    local prowlarr_url="$2"
+    declare -n titles_ref="$3"
+    declare -n data_ref="$4"
+    local counter=1
+    
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^[0-9]+\) ]]; then
+            titles_ref[$counter]="${line#*) }"
+        elif [[ "$line" == *"STORE:"* ]]; then
+            data_ref[$counter]="${line#*STORE: }"
+            ((counter++))
+        fi
+    done < <(echo "$response" | jq -r --arg url "$prowlarr_url" '
+        if type == "array" then
+            . | sort_by(.size) | reverse | to_entries[] |
+            "\(.key + 1)) \(.value.title)\nSTORE: \(.value)"
+        else
+            empty
+        end')
+    
+    echo "$counter"
 }

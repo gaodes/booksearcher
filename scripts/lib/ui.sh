@@ -114,3 +114,59 @@ select_protocol() {
     # Return both values using a delimiter
     echo "${protocol}:${protocol_type}"
 }
+
+select_media_type() {
+    local search_term="$1"
+    local prompt_text="Select Media Type"
+    [ -n "$search_term" ] && prompt_text="Select Media Type for '$search_term'"
+    
+    while true; do
+        echo
+        echo "$prompt_text:"
+        echo "1) 🎧 Audiobook"
+        echo "2) 📚 eBook"
+        echo "3) 🎧+📚 Both"
+        echo "q) Quit"
+        read -r -p "> " media_choice
+        case $media_choice in
+            1) echo "audio" ;;
+            2) echo "book" ;;
+            3) echo "both" ;;
+            q|Q) quit_script ;;
+            *) 
+                echo "Invalid selection. Please choose 1, 2, 3, or q to quit."
+                continue
+                ;;
+        esac
+        break
+    done
+}
+
+get_search_input() {
+    while true; do
+        echo
+        echo "Enter Search Term (or 'q' to quit):"
+        echo "Examples: author name, book title, series"
+        read -r -p "> " search_input
+        case $search_input in
+            q|Q) quit_script ;;
+            "") echo "⚠️  Search term required" ;;
+            *) echo "$search_input"; break ;;
+        esac
+    done
+}
+
+display_search_context() {
+    local search_term="$1"
+    local media_kind="$2"
+    local protocol_type="$3"
+    local media_icon="$4"
+    
+    echo
+    echo "🔍 '$search_term'"
+    if [[ "$media_kind" == "Audiobooks & eBooks" ]]; then
+        echo "Searching both: 🎧 Audiobooks & 📚 eBooks ┃ $protocol_type"
+    else
+        echo "$media_icon $media_kind ┃ $protocol_type"
+    fi
+}

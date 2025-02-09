@@ -1,4 +1,3 @@
-
 get_protocol_icon() {
     case "$1" in
         "usenet") echo "📡" ;;
@@ -69,4 +68,49 @@ show_usage() {
 quit_script() {
     echo "Exiting script..."
     exit 0
+}
+
+select_protocol() {
+    local protocol_prompt="$1"
+    local protocol=""
+    local protocol_type="📡 Usenet & 🧲 Torrent"
+
+    if [ "$protocol_prompt" = "true" ]; then
+        echo "Select Search Protocol:"
+        echo "────────────────────────────────────"
+        echo "1) 📡 Usenet & 🧲 Torrent  - Search both networks"
+        echo "2) 📡 Usenet              - NZB files from Newgroups"
+        echo "3) 🧲 Torrent             - Magnet/Torrent files via peers"
+        echo "q) Quit"
+        echo "────────────────────────────────────"
+        while true; do
+            read -r -p "> " protocol_choice
+            case $protocol_choice in
+                1)
+                    protocol=""
+                    protocol_type="📡 Usenet & 🧲 Torrent"
+                    break
+                    ;;
+                2)
+                    protocol="usenet"
+                    protocol_type="📡 Usenet"
+                    break
+                    ;;
+                3)
+                    protocol="torrent"
+                    protocol_type="🧲 Torrent"
+                    break
+                    ;;
+                q|Q)
+                    quit_script
+                    ;;
+                *)
+                    echo "❌ Invalid selection. Please choose 1, 2, 3, or q to quit."
+                    ;;
+            esac
+        done
+    fi
+
+    # Return both values using a delimiter
+    echo "${protocol}:${protocol_type}"
 }

@@ -84,12 +84,18 @@ class BookSearcher:
     def show_media_type_menu(self) -> tuple[List[int], str, str]:
         """Interactive media type selection"""
         while True:
-            print("\nSelect Media Type:")
-            print("1) 🎧 Audiobook")
-            print("2) 📚 eBook")
-            print("3) 🎧+📚 Both")
-            print("q) Quit")
-            choice = input("> ").strip().lower()
+            print("\n📚 Welcome to BookSearcher! 📚")
+            print("───────────────────────────")
+            print("Choose what type of books you're looking for:")
+            print("\n1) 🎧 Audiobooks")
+            print("   Perfect for listening while commuting or doing other activities")
+            print("\n2) 📚 eBooks")
+            print("   Digital books for your e-reader or tablet")
+            print("\n3) 🎧+📚 Both Formats")
+            print("   Search for both audiobooks and ebooks simultaneously")
+            print("\nq) ❌ Quit")
+            
+            choice = input("\n✨ Your choice > ").strip().lower()
             
             if choice == 'q':
                 sys.exit(0)
@@ -100,7 +106,7 @@ class BookSearcher:
             elif choice == '3':
                 return [self.tags['audiobooks'], self.tags['ebooks']], "Audiobooks & eBooks", "🎧+📚"
             else:
-                print("Invalid selection. Please choose 1, 2, 3, or q to quit.")
+                print("\n❌ Please choose 1, 2, 3, or q to quit")
 
     async def run(self):
         self.performance_stats['start_time'] = datetime.now()
@@ -236,17 +242,23 @@ class BookSearcher:
                 
                 # Get search term
                 while True:
-                    print("\nEnter Search Term (or 'q' to quit):")
-                    print("Examples: author name, book title, series")
-                    search_term = input("> ").strip()
+                    print("\n🔍 Enter Your Search Term:")
+                    print("─────────────────────────")
+                    print("✨ You can search by:")
+                    print("  📝 Book title (e.g., 'The Great Gatsby')")
+                    print("  👤 Author name (e.g., 'Stephen King')")
+                    print("  📚 Series name (e.g., 'Harry Potter')")
+                    print("\n❌ Type 'q' to quit")
+                    search_term = input("\n🔎 Search > ").strip()
                     
                     if search_term.lower() == 'q':
                         return
                     if search_term:
                         break
-                    print("⚠️  Search term required")
-                
-                # Always show spinner during search
+                    print("\n❌ Please enter a search term")
+
+                # Show searching animation
+                print("\n🔍 Searching through multiple sources...")
                 self.spinner.start()
                 results = await self.prowlarr.search(search_term, tag_ids, None)
                 self.spinner.stop()

@@ -176,7 +176,7 @@ class BookSearcher:
         parser.add_argument('-s', '--search', type=int, help='Search ID')
         parser.add_argument('-g', '--grab', type=int, help='Result number')
         parser.add_argument('--list-cache', action='store_true', help='List cached searches')
-        parser.add_argument('--clear-cache', action='store_true', help='Clear cache')
+        parser.add_argument('--clear-cache', action='store_true', help='Clear cache')  # Fixed: removed extra .add
         parser.add_argument('-sl', '--search-last', action='store_true', help='Use most recent search')
         parser.add_argument('-d', '--debug', action='store_true', help='Enable debug output')
         parser.add_argument('search_term', nargs='*', help='Search term')
@@ -381,46 +381,89 @@ class BookSearcher:
             await self.handle_error(e, f"Grab operation (Search #{search_id}, Result #{result_num})")
 
     async def display_results(self, results: List[Dict], search_id: int, headless: bool = False):
-        """Display search results in either headless or interactive mode"""
         if headless:
             self._display_headless_results(results, search_id)
             return
 
-        print("\nSearch Results:")
-        print("==============\n")
+        print("\n📚 Search Results Found 📚")
+        print("═══════════════════════")
+        print(f"Found {len(results)} items\n")
+
+        def get_visual_width(s: str) -> int:
+            """Get the visual width of a string, counting emojis as width 2"""
+            width = 0
+            for c in s:
+                if ord(c) > 0xFFFF:  # Emoji characters
+                    width += 2
+                else:
+                    width += 1
+            return width
 
         for i, result in enumerate(results, 1):
-            # Format size
-            size = result.get('size', 0)
-            if size > 0:
+            # Calculate box width based on title but with space for adjustments
+            title = f"【{i}】{result['title']}"
+            title_width = get_visual_width(title)
+            box_width = title_width + 6  # Adding more padding for adjustments
+
+            # Format info first
+            size_str = "N/A"
+            if result.get('size', 0) > 0:
+                size = result.get('size', 0)
                 if size > 1024**3:
                     size_str = f"{size/1024**3:.2f} GB"
                 elif size > 1024**2:
                     size_str = f"{size/1024**2:.2f} MB"
                 else:
                     size_str = f"{size/1024:.2f} KB"
-            else:
-                size_str = "N/A"
 
-            # Format protocol icon and status
             protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
-            if result.get('protocol') == "usenet":
-                status = f"Grabs: {result.get('grabs', 0)}"
-            else:
-                seeders = result.get('seeders', 0)
-                status = "Dead torrent" if seeders == 0 else f"🌱 {seeders} seeders"
+            status = f"💫 {result.get('grabs', 0)} grabs" if result.get('protocol') == "usenet" else \
+                     f"🌱 {result.get('seeders', 0)} seeders" if result.get('seeders', 0) > 0 else "💀 Dead torrent"
 
-            # Print formatted result
-            print(f"[{i}] {result['title']}")
-            print("─" * len(f"[{i}] {result['title']}"))
-            print(f"📦 Size:      {size_str}")
-            print(f"📅 Published: {result.get('publishDate', 'N/A')[:10]}")
-            print(f"🔌 Protocol:  {protocol_icon} {result.get('protocol', 'N/A')}")
-            print(f"🔍 Indexer:   {result.get('indexer', 'N/A')}")
-            print(f"⚡ Status:    {status}\n")
+            # Draw the box with adjusted right border for title (2 spaces left)
+            print(f"┌{'─' * box_width}┐")
+            print(f"│ {title}{' ' * (box_width - title_width - 3)}│")  # -3 to shift border left by 2
+            print(f"├{'─' * box_width}┤")
 
-        print("────────────────────────────────────")
-        print(f"Search saved as #{search_id}")
+            # Create detail lines
+            details = [
+                f"📦 Size:          {size_str}",
+                f"📅 Published:     {result.get('publishDate', 'N/A')[:10]}", 
+                f"🔌 Protocol:      {protocol_icon} {result.get('protocol', 'N/A')}", 
+                f"🔍 Indexer:       {result.get('indexer', 'N/A')}", 
+                f"⚡ Status:        {status}"
+            ]
+
+            # Print each line with proper spacing and border adjustment
+            for line in details:
+                content_width = get_visual_width(line)
+                if '⚡ Status:' in line:
+                    # Status line: shift border left by 1
+                    padding = box_width - content_width - 2  # -2 instead of -1
+                else:
+                    # Regular lines: normal padding
+                    padding = box_width - content_width - 1
+                print(f"│ {line}{' ' * padding}│")
+
+            print(f"└{'─' * box_width}┘\n")
+
+        # Add search summary after results but before search ID
+        print("\n" + "═" * 50)
+        print("📊 Search Summary")
+        print("─" * 50)
+        print(f"🔍 Found: {len(results)} items")
+        print(f"🔌 Protocols: {', '.join(sorted(set(f'{"📡" if p == "usenet" else "🧲"} {p}' for p in set(r.get('protocol', 'unknown') for r in results))))}")
+        print(f"🌐 Sites: {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
+        print("═" * 50)
+
+        # Then show search ID and instructions
+        print("\n" + "═" * 60)
+        print("✨ Search saved! To download later, use this ID: ✨")
+        print(f"🔑 Search ID: #{search_id}")
+        print("═" * 60)
+        print("\nTo download, use:")
+        print(f"./booksearcher.py -s {search_id} -g <result_number>")
+
         await self._handle_interactive_selection(results)
 
     def _display_headless_results(self, results: List[Dict], search_id: int):
@@ -428,18 +471,18 @@ class BookSearcher:
         kind_icon = self._get_kind_icon(self.current_kind)
         proto_icon = self._get_protocol_icon(self.current_protocol)
         
-        print("\n════════════════════════════════════")
+        print("\n" + "═" * 50)
         print("     ✨ Search completed! ✨")
-        print("────────────────────────────────────")
-        print(f"🔢 Search ID: #{search_id}")
-        print(f"🔍 Term: {self.current_search}")
-        print(f"🧩 Kind: {kind_icon} {self.current_kind}")
-        print(f"🔌 Protocol: {proto_icon} {self.current_protocol or 'both'}")
-        print(f"\nFound {len(results)} results")
-        print("\nTo download a result, use:")
+        print("─" * 50)
+        print(f"🔑 Search ID:  #{search_id}")
+        print(f"🔍 Term:       {self.current_search}")
+        print(f"🧩 Kind:       {kind_icon} {self.current_kind}")
+        print(f"🔌 Protocol:   {proto_icon} {self.current_protocol or 'both'}")
+        print(f"📊 Results:    {len(results)} items found")
+        print("\n📝 To download a result, use:")
         print(f"./booksearcher.py -s {search_id} -g <result_number>")
-        print("\nResults will be available for 7 days")
-        print("════════════════════════════════════")
+        print("\n⏰ Results will be available for 7 days")
+        print("═" * 50)
 
     async def _handle_interactive_selection(self, results: List[Dict]):
         """Handle interactive result selection"""

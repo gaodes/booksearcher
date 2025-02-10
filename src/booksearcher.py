@@ -41,7 +41,7 @@ class Spinner:
 
 class BookSearcher:
     def __init__(self):
-        self.cache_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
+        self.cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
         self.prowlarr = ProwlarrAPI(settings["PROWLARR_URL"], settings["API_KEY"])
         self.spinner = Spinner()  # Always initialize spinner
         self.debug = False

@@ -18,4 +18,7 @@ RUN mkdir -p ./src/cache && chmod 777 ./src/cache
 # Set environment variable to indicate Docker environment
 ENV RUNNING_IN_DOCKER=true
 
-ENTRYPOINT ["/bin/bash"]
+# Set up shell function in profile
+RUN echo 'bs() { python /app/src/booksearcher.py "$@"; }' > /etc/profile.d/booksearcher.sh
+
+ENTRYPOINT ["/bin/sh"]

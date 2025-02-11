@@ -59,7 +59,6 @@ docker run -d \
 Or using Docker Compose:
 
 ```yaml
-version: '3'
 services:
   booksearcher:
     image: gaodes/booksearcher:latest
@@ -69,6 +68,18 @@ services:
     volumes:
       - ./cache:/app/src/cache
     restart: unless-stopped
+```
+
+Save the above as `docker-compose.yml` and run:
+```bash
+# Start the container
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop the container
+docker compose down
 ```
 
 ### Development Setup
@@ -162,15 +173,7 @@ docker exec -it booksearcher /app/src/booksearcher.py --help
 - 📊 Cache statistics in debug mode
 - 💿 Persistent across container restarts when using volume mount
 
-### Cache Directory Structure
-```
-cache/
-├── searches/        # Stores search results
-├── downloads/       # Download history
-└── statistics.json  # Cache usage statistics
-```
-
-> 💡 **Tip**: Mount the cache directory as a volume to preserve your search history and downloads across container restarts
+> 💡 **Tip**: Mount the cache directory as a volume to preserve your search history across container restarts
 
 ## 🐛 Troubleshooting
 

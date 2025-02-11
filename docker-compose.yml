@@ -1,10 +1,12 @@
 services:
   booksearcher:
+    build: .
     container_name: booksearcher
-    stdin_open: true
-    tty: true
     volumes:
       - ./src:/app/src
       - ./.env:/app/.env:ro
     environment:
       - TZ=Europe/Bucharest
+      - ENV=/etc/profile.d/booksearcher.sh
+    stdin_open: true
+    tty: true

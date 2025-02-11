@@ -19,6 +19,7 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 2. 🔑 Prowlarr API key (Settings > General)
 3. 📥 Configured download client (Transmission, qBittorrent, SABnzbd, etc.)
 4. 🏷️ Indexers must be tagged properly:
+
    - Tag `audiobooks` for audiobook indexers
    - Tag `ebooks` for ebook indexers
    - Both tags for indexers supporting both types
@@ -35,11 +36,13 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 ### Quick Start with Docker
 
 1. Create directories for configuration and cache:
+
 ```bash
 mkdir -p booksearcher/cache && cd booksearcher
 ```
 
 2. Create your environment file:
+
 ```bash
 cat > .env << EOL
 PROWLARR_URL=http://your-prowlarr-instance:9696
@@ -48,6 +51,7 @@ EOL
 ```
 
 3. Run the container with persistent cache:
+
 ```bash
 docker run -d \
   --name booksearcher \
@@ -71,6 +75,7 @@ services:
 ```
 
 Save the above as `docker-compose.yml` and run:
+
 ```bash
 # Start the container
 docker compose up -d
@@ -87,52 +92,77 @@ docker compose down
 If you want to contribute or modify the code:
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/gaodes/booksearcher.git
 cd booksearcher
 ```
 
 2. Create `.env` file and modify for your environment:
+
 ```bash
 cp .env.example .env
 ```
 
 3. Build and run the development container:
+
 ```bash
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
 ## 🚀 Usage Guide
 
-### Interactive Mode
+### Operation Modes
 
-1. Enter the container:
+BookSearcher operates in two modes:
+
+1. **Interactive Mode** (Default)
+
+   - Full interactive interface with menus and prompts
+   - Rich formatting and detailed result display
+   - Step-by-step guidance through the search process
+   - Continuous download prompt after results
+   - Best for direct usage and exploration
+2. **Headless Mode** (`-x, --headless`)
+
+   - Minimal output suitable for scripts and automation
+   - Single-line results format
+   - No interactive prompts
+   - Returns search ID for later use
+   - Perfect for scripting and remote usage
+
+### Interactive Mode (Default)
+
+Simply run without any flags:
 
 ```bash
-docker exec -it booksearcher /app/src/booksearcher.py
+docker exec -it booksearcher bs
 ```
 
-2. Follow the interactive menu:
-   - Choose media type (Audiobooks/eBooks/Both)
-   - Enter your search term
-   - Browse through results
-   - Select an item to download
+Follow the interactive menu:
 
-### Command Line Mode
+- Choose media type (Audiobooks/eBooks/Both)
+- Enter your search term
+- Browse through results
+- Select an item to download
+
+### Headless Mode
 
 Search for books:
 
 ```bash
-# Basic search
-docker exec -it booksearcher /app/src/booksearcher.py "book title or author"
+# Headless search (no interactive prompts)
+docker exec -it booksearcher bs --headless "book name"
+```
 
-# Search for specific type
-docker exec -it booksearcher /app/src/booksearcher.py -k audio "audiobook name"  # audiobooks only
-docker exec -it booksearcher /app/src/booksearcher.py -k book "ebook name"       # ebooks only
+When running in headless mode, the output will show a search ID and instructions. You can then grab a specific result:
 
-# Filter by protocol
-docker exec -it booksearcher /app/src/booksearcher.py -p tor "book name"   # torrents only
-docker exec -it booksearcher /app/src/booksearcher.py -p nzb "book name"   # usenet only
+```bash
+# Format: bs -s <search_id> -g <result_number>
+docker exec -it booksearcher bs -s 42 -g 1  # Grab first result from search #42
+
+# Quick grab from last search
+docker exec -it booksearcher bs --search-last -g 1  # Grab first result from most recent search
 ```
 
 ### Managing Downloads
@@ -141,31 +171,54 @@ When you perform a search, you'll get a search ID. Use this to download items la
 
 ```bash
 # List recent searches
-docker exec -it booksearcher /app/src/booksearcher.py --list-cache
+docker exec -it booksearcher bs --list-cache
 
 # Download item #3 from search #42
-docker exec -it booksearcher /app/src/booksearcher.py -s 42 -g 3
+docker exec -it booksearcher bs -s 42 -g 3
 
 # Download from most recent search
-docker exec -it booksearcher /app/src/booksearcher.py --search-last -g 2
+docker exec -it booksearcher bs -sl -g 2
 ```
 
 ### Additional Commands
 
 ```bash
 # Enable debug output
-docker exec -it booksearcher /app/src/booksearcher.py -d "search term"
+docker exec -it booksearcher bs -d "search term"
 
 # Clear search cache
-docker exec -it booksearcher /app/src/booksearcher.py --clear-cache
+docker exec -it booksearcher bs --clear-cache
 
 # Show help
-docker exec -it booksearcher /app/src/booksearcher.py --help
+docker exec -it booksearcher bs --help
 ```
+
+## 📝 Command Reference
+
+Available commands and flags for `bs` (booksearcher):
+
+### Search Flags
+
+| Flag(s)                        | Description                                 |
+| ------------------------------ | ------------------------------------------- |
+| `-k, --kind {audio,book,both}` | Specify media type to search for            |
+| `-p, --protocol {tor,nzb}`     | Filter results by protocol (torrent/usenet) |
+| `-x, --headless`               | Run in non-interactive mode                 |
+| `-d, --debug`                  | Enable debug output                         |
+
+### Cache Management
+
+| Flag(s)               | Description                      |
+| --------------------- | -------------------------------- |
+| `-s, --search <ID>`   | Specify a search ID to work with |
+| `-g, --grab <number>` | Download specific result number  |
+| `-sl, --search-last`  | Use most recent search           |
+| `--list-cache`        | Show all cached searches         |
+| `--clear-cache`       | Delete all cached searches       |
 
 ## 💾 Cache System
 
-- 📂 Cache location: 
+- 📂 Cache location:
   - Inside container: `/app/src/cache`
   - Host machine: `./cache` (when using volume mount)
 - ⏱️ Default cache duration: 7 days
@@ -180,16 +233,17 @@ docker exec -it booksearcher /app/src/booksearcher.py --help
 Common issues and solutions:
 
 1. **Can't connect to Prowlarr**
+
    - Verify PROWLARR_URL is accessible from container
    - Check API key is correct
    - Ensure Prowlarr is running
-
 2. **No results found**
+
    - Verify indexers are properly tagged
    - Check indexer health in Prowlarr
    - Try different search terms
-
 3. **Download not starting**
+
    - Check download client configuration in Prowlarr
    - Verify download client is running
    - Check Prowlarr logs for errors

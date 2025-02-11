@@ -54,6 +54,9 @@ class BookSearcher:
             'cache_hits': 0,
             'cache_misses': 0
         }
+        self.current_search = None
+        self.current_kind = None
+        self.current_protocol = None
         os.makedirs(self.cache_dir, exist_ok=True)
 
     async def handle_error(self, error: Exception, context: str = ""):
@@ -171,12 +174,11 @@ class BookSearcher:
         parser = argparse.ArgumentParser(description='Search for books using Prowlarr')
         parser.add_argument('-k', '--kind', choices=['audio', 'book', 'both'], help='Media type')
         parser.add_argument('-p', '--protocol', choices=['tor', 'nzb'], help='Protocol')
-        parser.add_argument('-i', '--interactive', action='store_true', help='Interactive mode')
-        parser.add_argument('--headless', action='store_true', help='Headless mode')
+        parser.add_argument('-x', '--headless', action='store_true', help='Headless mode')
         parser.add_argument('-s', '--search', type=int, help='Search ID')
         parser.add_argument('-g', '--grab', type=int, help='Result number')
         parser.add_argument('--list-cache', action='store_true', help='List cached searches')
-        parser.add_argument('--clear-cache', action='store_true', help='Clear cache')  # Fixed: removed extra .add
+        parser.add_argument('--clear-cache', action='store_true', help='Clear cache')
         parser.add_argument('-sl', '--search-last', action='store_true', help='Use most recent search')
         parser.add_argument('-d', '--debug', action='store_true', help='Enable debug output')
         parser.add_argument('search_term', nargs='*', help='Search term')
@@ -235,8 +237,44 @@ class BookSearcher:
     async def handle_search(self, args):
         """Handle search operation"""
         try:
-            # If no arguments provided, go into interactive mode
+            # Store current search parameters for headless mode
+            if args.headless and args.search_term:
+                self.current_search = ' '.join(args.search_term)
+                self.current_kind = 'both'  # Default to both
+                self.current_protocol = None  # Default to both protocols
+                
+                # Get tags for both ebooks and audiobooks
+                tag_ids = [
+                    self.tags['audiobooks'],
+                    self.tags['ebooks']
+                ]
+
+                # Show searching animation
+                self.spinner.start()
+                results = await self.prowlarr.search(self.current_search, tag_ids, None)
+                self.spinner.stop()
+
+                if not results:
+                    print("No results found")
+                    return
+
+                # Save results
+                search_id = self.get_next_search_id()
+                self.save_search_results(
+                    search_id,
+                    results,
+                    self.current_search,
+                    'both',
+                    None,
+                    'headless'
+                )
+
+                await self.display_results(results, search_id, True)
+                return
+
+            # Rest of the existing search handling code
             if not args.search_term and not args.search and not args.grab:
+                # If no arguments provided, go into interactive mode
                 # Get media type from menu
                 tag_ids, kind, icon = self.show_media_type_menu()
                 
@@ -293,6 +331,11 @@ class BookSearcher:
             search_term = ' '.join(args.search_term)
 
             try:
+                # Store current search parameters
+                self.current_search = search_term
+                self.current_kind = args.kind if args.kind else 'both'
+                self.current_protocol = args.protocol
+
                 # Get tag IDs based on kind argument
                 tag_ids = []
                 if args.kind in ('audio', 'both'):
@@ -459,7 +502,7 @@ class BookSearcher:
         print(f"🔑 Search ID: #{search_id}")
         print("═" * 60)
         print("\nTo download, use:")
-        print(f"./booksearcher.py -s {search_id} -g <result_number>")
+        print(f"bs -s {search_id} -g <result_number>")
 
         await self._handle_interactive_selection(results)
 
@@ -476,8 +519,39 @@ class BookSearcher:
         print(f"🧩 Kind:       {kind_icon} {self.current_kind}")
         print(f"🔌 Protocol:   {proto_icon} {self.current_protocol or 'both'}")
         print(f"📊 Results:    {len(results)} items found")
+        
+        # Add condensed results listing
+        print("\n📚 Results:")
+        print("─" * 50)
+        for i, result in enumerate(results, 1):
+            size_str = "N/A"
+            if result.get('size', 0) > 0:
+                size = result.get('size', 0)
+                if size > 1024**3:
+                    size_str = f"{size/1024**3:.2f}GB"
+                elif size > 1024**2:
+                    size_str = f"{size/1024**2:.2f}MB"
+                else:
+                    size_str = f"{size/1024:.2f}KB"
+                    
+            protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
+            print(f"{i:2d}. {protocol_icon} [{size_str}] {result['title']}")
+
+        # Add search summary at the bottom
+        print("\n" + "═" * 50)
+        print("📊 Search Summary")
+        print("─" * 50)
+        print(f"🔍 Found: {len(results)} items")
+        protocols = []
+        for p in set(r.get('protocol', 'unknown') for r in results):
+            icon = "📡" if p == "usenet" else "🧲"
+            protocols.append(f"{icon} {p}")
+        print(f"🔌 Protocols: {', '.join(sorted(protocols))}")
+        print(f"🌐 Sites: {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
+        print("═" * 50)
+
         print("\n📝 To download a result, use:")
-        print(f"./booksearcher.py -s {search_id} -g <result_number>")
+        print(f"bs -s {search_id} -g <result_number>")
         print("\n⏰ Results will be available for 7 days")
         print("═" * 50)
 

@@ -7,7 +7,7 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 - 🔍 Powerful search across multiple indexers via Prowlarr
 - 📚 Support for both eBooks and Audiobooks
 - 💾 Smart caching system for quick result retrieval
-- 🎯 Interactive and command-line modes
+- 🎯 Interactive and headless mode for easly using it remotely
 - 🐳 Docker containerization for easy deployment
 - 📡 Support for both Usenet and Torrent protocols
 
@@ -60,6 +60,7 @@ docker-compose up -d
 ### Interactive Mode
 
 1. Enter the container:
+
 ```bash
 docker exec -it booksearcher /app/src/booksearcher.py
 ```
@@ -73,6 +74,7 @@ docker exec -it booksearcher /app/src/booksearcher.py
 ### Command Line Mode
 
 Search for books:
+
 ```bash
 # Basic search
 docker exec -it booksearcher /app/src/booksearcher.py "book title or author"
@@ -89,6 +91,7 @@ docker exec -it booksearcher /app/src/booksearcher.py -p nzb "book name"   # use
 ### Managing Downloads
 
 When you perform a search, you'll get a search ID. Use this to download items later:
+
 ```bash
 # List recent searches
 docker exec -it booksearcher /app/src/booksearcher.py --list-cache
@@ -148,10 +151,6 @@ Contributions welcome! Please:
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
-
-## 📜 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 📞 Support
 

@@ -33,17 +33,20 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 ## 📦 Installation
 
 1. Clone the repository:
+
 ```bash
-git clone https://github.com/yourusername/booksearcher.git
+git clone https://github.com/gaodes/booksearcher.git
 cd booksearcher
 ```
 
 2. Create `.env` file from example:
+
 ```bash
 cp .env.example .env
 ```
 
 3. Configure your environment:
+
 ```bash
 # Edit .env file with your settings
 PROWLARR_URL=http://your-prowlarr-instance:9696
@@ -51,6 +54,7 @@ PROWLARR_API_KEY=your-api-key-here
 ```
 
 4. Build and start with Docker Compose:
+
 ```bash
 docker-compose up -d
 ```

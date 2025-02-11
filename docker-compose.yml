@@ -1,11 +1,10 @@
 services:
   booksearcher:
-    build: .
     container_name: booksearcher
+    stdin_open: true
+    tty: true
     volumes:
       - ./src:/app/src
       - ./.env:/app/.env:ro
     environment:
       - TZ=Europe/Bucharest
-    stdin_open: true
-    tty: true

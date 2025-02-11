@@ -32,31 +32,63 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 
 ## 📦 Installation
 
-1. Clone the repository:
+### Quick Start with Docker
 
+1. Create directories for configuration and cache:
+```bash
+mkdir -p booksearcher/cache && cd booksearcher
+```
+
+2. Create your environment file:
+```bash
+cat > .env << EOL
+PROWLARR_URL=http://your-prowlarr-instance:9696
+PROWLARR_API_KEY=your-api-key-here
+EOL
+```
+
+3. Run the container with persistent cache:
+```bash
+docker run -d \
+  --name booksearcher \
+  --env-file .env \
+  -v "$(pwd)/cache:/app/src/cache" \
+  gaodes/booksearcher:latest
+```
+
+Or using Docker Compose:
+
+```yaml
+version: '3'
+services:
+  booksearcher:
+    image: gaodes/booksearcher:latest
+    container_name: booksearcher
+    env_file:
+      - .env
+    volumes:
+      - ./cache:/app/src/cache
+    restart: unless-stopped
+```
+
+### Development Setup
+
+If you want to contribute or modify the code:
+
+1. Clone the repository:
 ```bash
 git clone https://github.com/gaodes/booksearcher.git
 cd booksearcher
 ```
 
-2. Create `.env` file from example:
-
+2. Create `.env` file and modify for your environment:
 ```bash
 cp .env.example .env
 ```
 
-3. Configure your environment:
-
+3. Build and run the development container:
 ```bash
-# Edit .env file with your settings
-PROWLARR_URL=http://your-prowlarr-instance:9696
-PROWLARR_API_KEY=your-api-key-here
-```
-
-4. Build and start with Docker Compose:
-
-```bash
-docker-compose up -d
+docker-compose -f docker-compose.dev.yml up -d
 ```
 
 ## 🚀 Usage Guide
@@ -122,10 +154,23 @@ docker exec -it booksearcher /app/src/booksearcher.py --help
 
 ## 💾 Cache System
 
-- 📂 Cache location: `./src/cache` in container
+- 📂 Cache location: 
+  - Inside container: `/app/src/cache`
+  - Host machine: `./cache` (when using volume mount)
 - ⏱️ Default cache duration: 7 days
 - 🧹 Auto-cleanup of old cache entries
 - 📊 Cache statistics in debug mode
+- 💿 Persistent across container restarts when using volume mount
+
+### Cache Directory Structure
+```
+cache/
+├── searches/        # Stores search results
+├── downloads/       # Download history
+└── statistics.json  # Cache usage statistics
+```
+
+> 💡 **Tip**: Mount the cache directory as a volume to preserve your search history and downloads across container restarts
 
 ## 🐛 Troubleshooting
 

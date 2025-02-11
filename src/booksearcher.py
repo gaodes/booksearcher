@@ -405,6 +405,11 @@ class BookSearcher:
             title_width = get_visual_width(title)
             box_width = title_width + 6  # Adding more padding for adjustments
 
+            # Draw the box only around the title
+            print(f"┌{'─' * box_width}┐")
+            print(f"│ {title}{' ' * (box_width - title_width - 3)}│")
+            print(f"└{'─' * box_width}┘")
+
             # Format info first
             size_str = "N/A"
             if result.get('size', 0) > 0:
@@ -420,12 +425,7 @@ class BookSearcher:
             status = f"💫 {result.get('grabs', 0)} grabs" if result.get('protocol') == "usenet" else \
                      f"🌱 {result.get('seeders', 0)} seeders" if result.get('seeders', 0) > 0 else "💀 Dead torrent"
 
-            # Draw the box with adjusted right border for title (2 spaces left)
-            print(f"┌{'─' * box_width}┐")
-            print(f"│ {title}{' ' * (box_width - title_width - 3)}│")  # -3 to shift border left by 2
-            print(f"├{'─' * box_width}┤")
-
-            # Create detail lines
+            # Print details left-aligned
             details = [
                 f"📦 Size:          {size_str}",
                 f"📅 Published:     {result.get('publishDate', 'N/A')[:10]}", 
@@ -434,18 +434,11 @@ class BookSearcher:
                 f"⚡ Status:        {status}"
             ]
 
-            # Print each line with proper spacing and border adjustment
+            # Print each detail line with consistent left alignment
             for line in details:
-                content_width = get_visual_width(line)
-                if '⚡ Status:' in line:
-                    # Status line: shift border left by 1
-                    padding = box_width - content_width - 2  # -2 instead of -1
-                else:
-                    # Regular lines: normal padding
-                    padding = box_width - content_width - 1
-                print(f"│ {line}{' ' * padding}│")
+                print(f"  {line}")
 
-            print(f"└{'─' * box_width}┘\n")
+            print()  # Empty line between results
 
         # Add search summary after results but before search ID
         print("\n" + "═" * 50)

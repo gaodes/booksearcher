@@ -1,27 +1,36 @@
-# BookSearcher
+# 📚 BookSearcher
 
-BookSearcher is a Python-based tool that interfaces with Prowlarr to search for books across multiple indexers. It provides a convenient way to search and manage book downloads through a Docker container.
+BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search for books across multiple indexers. It provides a convenient way to search for both eBooks and Audiobooks, with support for caching results and managing downloads.
 
-## Features
+## ✨ Features
 
-- Integration with Prowlarr for comprehensive book searching
-- Caching system to store and quickly retrieve previous search results
-- Support for multiple indexers through Prowlarr
-- Docker containerization for easy deployment
+- 🔍 Powerful search across multiple indexers via Prowlarr
+- 📚 Support for both eBooks and Audiobooks
+- 💾 Smart caching system for quick result retrieval
+- 🎯 Interactive and command-line modes
+- 🐳 Docker containerization for easy deployment
+- 📡 Support for both Usenet and Torrent protocols
 
-## Requirements
+## 🛠️ Requirements
 
-### Prowlarr Setup
-- A running instance of Prowlarr
-- Prowlarr API key
-- Properly configured download clients in Prowlarr
-- Indexers with appropriate tags for book content
+### Prowlarr Configuration
+
+1. 🏃‍♂️ A running instance of Prowlarr
+2. 🔑 Prowlarr API key (Settings > General)
+3. 📥 Configured download client (Transmission, qBittorrent, SABnzbd, etc.)
+4. 🏷️ Indexers must be tagged properly:
+   - Tag `audiobooks` for audiobook indexers
+   - Tag `ebooks` for ebook indexers
+   - Both tags for indexers supporting both types
+
+> ⚠️ **Important**: Tag names must be exactly `audiobooks` and `ebooks` (lowercase)
 
 ### System Requirements
-- Docker
-- Docker Compose (optional, but recommended)
 
-## Installation
+- 🐳 Docker
+- 🔧 Docker Compose (recommended)
+
+## 📦 Installation
 
 1. Clone the repository:
 ```bash
@@ -29,72 +38,123 @@ git clone https://github.com/yourusername/booksearcher.git
 cd booksearcher
 ```
 
-2. Build the Docker image:
+2. Create `.env` file from example:
 ```bash
-docker build -t booksearcher .
+cp .env.example .env
 ```
 
-## Configuration
-
-Create a `.env` file with the following variables:
-```
+3. Configure your environment:
+```bash
+# Edit .env file with your settings
 PROWLARR_URL=http://your-prowlarr-instance:9696
 PROWLARR_API_KEY=your-api-key-here
 ```
 
-## Usage
-
-### Running with Docker
-
-```bash
-docker run -d \
-  --name booksearcher \
-  --env-file .env \
-  -v ./cache:/app/cache \
-  booksearcher
-```
-
-### Using Docker Compose
-
-```yaml
-version: '3'
-services:
-  booksearcher:
-    build: .
-    environment:
-      - PROWLARR_URL=http://your-prowlarr-instance:9696
-      - PROWLARR_API_KEY=your-api-key-here
-    volumes:
-      - ./cache:/app/cache
-```
-
-Then run:
+4. Build and start with Docker Compose:
 ```bash
 docker-compose up -d
 ```
 
-## Cache System
+## 🚀 Usage Guide
 
-The application maintains a local cache to store search results:
-- Cache is stored in the `/app/cache` directory inside the container
-- Results are cached for faster subsequent searches
-- Cache can be cleared by removing files from the cache directory
+### Interactive Mode
 
-## Prowlarr Setup Requirements
+1. Enter the container:
+```bash
+docker exec -it booksearcher /app/src/booksearcher.py
+```
 
-1. Ensure your Prowlarr instance has:
-   - At least one configured download client
-   - Book-specific indexers with appropriate tags
-   - A valid API key with necessary permissions
+2. Follow the interactive menu:
+   - Choose media type (Audiobooks/eBooks/Both)
+   - Enter your search term
+   - Browse through results
+   - Select an item to download
 
-2. Tag your book indexers appropriately:
-   - Use consistent tags for book-related indexers
-   - Ensure indexers support book/ebook formats
+### Command Line Mode
 
-## Contributing
+Search for books:
+```bash
+# Basic search
+docker exec -it booksearcher /app/src/booksearcher.py "book title or author"
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+# Search for specific type
+docker exec -it booksearcher /app/src/booksearcher.py -k audio "audiobook name"  # audiobooks only
+docker exec -it booksearcher /app/src/booksearcher.py -k book "ebook name"       # ebooks only
 
-## License
+# Filter by protocol
+docker exec -it booksearcher /app/src/booksearcher.py -p tor "book name"   # torrents only
+docker exec -it booksearcher /app/src/booksearcher.py -p nzb "book name"   # usenet only
+```
 
-[Add your license information here]
+### Managing Downloads
+
+When you perform a search, you'll get a search ID. Use this to download items later:
+```bash
+# List recent searches
+docker exec -it booksearcher /app/src/booksearcher.py --list-cache
+
+# Download item #3 from search #42
+docker exec -it booksearcher /app/src/booksearcher.py -s 42 -g 3
+
+# Download from most recent search
+docker exec -it booksearcher /app/src/booksearcher.py --search-last -g 2
+```
+
+### Additional Commands
+
+```bash
+# Enable debug output
+docker exec -it booksearcher /app/src/booksearcher.py -d "search term"
+
+# Clear search cache
+docker exec -it booksearcher /app/src/booksearcher.py --clear-cache
+
+# Show help
+docker exec -it booksearcher /app/src/booksearcher.py --help
+```
+
+## 💾 Cache System
+
+- 📂 Cache location: `./src/cache` in container
+- ⏱️ Default cache duration: 7 days
+- 🧹 Auto-cleanup of old cache entries
+- 📊 Cache statistics in debug mode
+
+## 🐛 Troubleshooting
+
+Common issues and solutions:
+
+1. **Can't connect to Prowlarr**
+   - Verify PROWLARR_URL is accessible from container
+   - Check API key is correct
+   - Ensure Prowlarr is running
+
+2. **No results found**
+   - Verify indexers are properly tagged
+   - Check indexer health in Prowlarr
+   - Try different search terms
+
+3. **Download not starting**
+   - Check download client configuration in Prowlarr
+   - Verify download client is running
+   - Check Prowlarr logs for errors
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 📞 Support
+
+- 📝 Open an issue for bugs
+- 💡 Feature requests welcome
+- 🌟 Star the repo if you find it useful!

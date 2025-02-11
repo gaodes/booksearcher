@@ -452,7 +452,11 @@ class BookSearcher:
         print("📊 Search Summary")
         print("─" * 50)
         print(f"🔍 Found: {len(results)} items")
-        print(f"🔌 Protocols: {', '.join(sorted(set(f'{"📡" if p == "usenet" else "🧲"} {p}' for p in set(r.get('protocol', 'unknown') for r in results))))}")
+        protocols = []
+        for p in set(r.get('protocol', 'unknown') for r in results):
+            icon = "📡" if p == "usenet" else "🧲"
+            protocols.append(f"{icon} {p}")
+        print(f"🔌 Protocols: {', '.join(sorted(protocols))}")
         print(f"🌐 Sites: {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
         print("═" * 50)
 
@@ -499,13 +503,14 @@ class BookSearcher:
                     print("\n✨ Successfully sent to download client!")
                     print(f"📥 Title:")
                     print(f"    {selected['title']}")
-                    return
+                    # Removed the return statement here to keep the loop going
                 else:
                     print("Invalid selection. Please try again.")
             except ValueError:
                 print("Please enter a valid number")
             except Exception as e:
                 await self.handle_error(e, "Interactive selection")
+                # Continue the loop even after an error
 
     async def list_cached_searches(self):
         """List all cached searches and allow interactive selection"""
@@ -593,20 +598,22 @@ class BookSearcher:
     @staticmethod
     def _get_kind_icon(kind: str) -> str:
         """Get icon for media kind"""
-        return {
+        icons = {
             "Audiobooks": "🎧",
             "eBook": "📚",
             "Audiobooks & eBooks": "🎧+📚"
-        }.get(kind, "📖")
+        }
+        return icons.get(kind, "📖")
 
     @staticmethod
     def _get_protocol_icon(protocol: Optional[str]) -> str:
         """Get icon for protocol"""
-        return {
+        icons = {
             "usenet": "📡",
             "torrent": "🧲",
             None: "📡+🧲"
-        }.get(protocol, "📡+🧲")
+        }
+        return icons.get(protocol, "📡+🧲")
 
     def clear_cache(self):
         """Clear all cached searches"""
@@ -678,4 +685,5 @@ async def main():
     await searcher.run()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if len(sys.argv) > 0 and sys.argv[0].endswith('booksearcher.py'):
+        asyncio.run(main())

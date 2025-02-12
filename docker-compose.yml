@@ -3,8 +3,9 @@ services:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
     environment:
-      - PROWLARR_URL=https://prowlarr.homelab.rip
-      - API_KEY=446137b137124aeb895da6c31afe4f10
+      - TZ=Europe/Bucharest
+      - PROWLARR_URL=http://your-prowlarr-url:9696
+      - API_KEY=your-prowlarr-api-key
       - CACHE_MAX_AGE=604800
     stdin_open: true
     tty: true

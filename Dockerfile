@@ -18,9 +18,13 @@ RUN chmod +x /app/src/booksearcher.py && \
 # Set environment variable to indicate Docker environment
 ENV RUNNING_IN_DOCKER=true
 
+# Create bs command script
+RUN echo '#!/bin/bash' > /usr/local/bin/bs && \
+    echo 'python /app/src/booksearcher.py "$@"' >> /usr/local/bin/bs && \
+    chmod +x /usr/local/bin/bs
+
 # Create an entrypoint script
 RUN echo '#!/bin/bash' > /entrypoint.sh && \
-    echo 'alias bs="python /app/src/booksearcher.py"' >> /entrypoint.sh && \
     echo 'exec /bin/bash "$@"' >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
 

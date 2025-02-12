@@ -1,6 +1,6 @@
 services:
   booksearcher:
-    image: elcheworks/booksearcher:latest
+    image: gaodes/booksearcher:latest
     container_name: booksearcher
     volumes:
       - ./src:/app/src

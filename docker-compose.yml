@@ -2,11 +2,10 @@ services:
   booksearcher:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
-    # volumes:
-      # - ./.env:/app/.env:ro
     environment:
-      - TZ=Europe/Bucharest
-      - ENV=/etc/profile.d/booksearcher.sh
+      - PROWLARR_URL=https://prowlarr.homelab.rip
+      - API_KEY=446137b137124aeb895da6c31afe4f10
+      - CACHE_MAX_AGE=604800
     stdin_open: true
     tty: true
     restart: unless-stopped

@@ -3,7 +3,6 @@ services:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
     volumes:
-      - ./src:/app/src
       - ./.env:/app/.env:ro
     environment:
       - TZ=Europe/Bucharest

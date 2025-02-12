@@ -2,8 +2,8 @@ services:
   booksearcher:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
-    volumes:
-      - ./.env:/app/.env:ro
+    # volumes:
+      # - ./.env:/app/.env:ro
     environment:
       - TZ=Europe/Bucharest
       - ENV=/etc/profile.d/booksearcher.sh

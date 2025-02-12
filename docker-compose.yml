@@ -1,6 +1,6 @@
 services:
   booksearcher:
-    build: .
+    image: elcheworks/booksearcher:latest
     container_name: booksearcher
     volumes:
       - ./src:/app/src
@@ -10,3 +10,4 @@ services:
       - ENV=/etc/profile.d/booksearcher.sh
     stdin_open: true
     tty: true
+    restart: unless-stopped

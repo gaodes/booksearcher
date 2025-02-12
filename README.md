@@ -33,6 +33,15 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 
 ## 📦 Installation
 
+### Using Docker (Recommended)
+
+```bash
+docker run -it --name booksearcher \
+  -e PROWLARR_URL=http://your-prowlarr-url:9696 \
+  -e API_KEY=your-prowlarr-api-key \
+  gaodes/booksearcher:latest
+```
+
 ### Quick Start with Docker
 
 1. Create directories for configuration and cache:
@@ -67,8 +76,6 @@ services:
   booksearcher:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
-    env_file:
-      - .env
     volumes:
       - ./cache:/app/src/cache
     restart: unless-stopped
@@ -219,8 +226,8 @@ Available commands and flags for `bs` (booksearcher):
 ## 💾 Cache System
 
 - 📂 Cache location:
-  - Inside container: `/app/src/cache`
-  - Host machine: `./cache` (when using volume mount)
+    - Inside container: `/app/src/cache`
+    - Host machine: `./cache` (when using volume mount)
 - ⏱️ Default cache duration: 7 days
 - 🧹 Auto-cleanup of old cache entries
 - 📊 Cache statistics in debug mode

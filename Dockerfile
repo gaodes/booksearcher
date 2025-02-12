@@ -25,10 +25,10 @@ RUN echo '#!/bin/sh' > /usr/local/bin/bs && \
     echo 'cd /app && python /app/src/booksearcher.py "$@"' >> /usr/local/bin/bs && \
     chmod +x /usr/local/bin/bs
 
-# Create an entrypoint script
+# Create an entrypoint script that keeps the container running
 RUN echo '#!/bin/sh' > /entrypoint.sh && \
     echo 'cd /app' >> /entrypoint.sh && \
-    echo 'exec /bin/sh "$@"' >> /entrypoint.sh && \
+    echo 'trap : TERM INT; sleep infinity & wait' >> /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

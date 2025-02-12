@@ -7,7 +7,7 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 - 🔍 Powerful search across multiple indexers via Prowlarr
 - 📚 Support for both eBooks and Audiobooks
 - 💾 Smart caching system for quick result retrieval
-- 🎯 Interactive and headless mode for easly using it remotely
+- 🎯 Interactive and headless mode for easily using it remotely
 - 🐳 Docker containerization for easy deployment
 - 📡 Support for both Usenet and Torrent protocols
 
@@ -33,39 +33,19 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 
 ## 📦 Installation
 
-### Using Docker (Recommended)
-
-```bash
-docker run -it --name booksearcher \
-  -e PROWLARR_URL=http://your-prowlarr-url:9696 \
-  -e API_KEY=your-prowlarr-api-key \
-  gaodes/booksearcher:latest
-```
 
 ### Quick Start with Docker
 
-1. Create directories for configuration and cache:
-
-```bash
-mkdir -p booksearcher/cache && cd booksearcher
-```
-
-2. Create your environment file:
-
-```bash
-cat > .env << EOL
-PROWLARR_URL=http://your-prowlarr-instance:9696
-PROWLARR_API_KEY=your-api-key-here
-EOL
-```
-
-3. Run the container with persistent cache:
+Run the container with persistent cache:
 
 ```bash
 docker run -d \
   --name booksearcher \
-  --env-file .env \
+  --network host \
   -v "$(pwd)/cache:/app/src/cache" \
+  -e PROWLARR_URL=https://prowlarr.homelab.rip \
+  -e API_KEY=446137b137124aeb895da6c31afe4f10 \
+  -e CACHE_MAX_AGE=604800 \
   gaodes/booksearcher:latest
 ```
 
@@ -76,9 +56,14 @@ services:
   booksearcher:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      PROWLARR_URL: https://prowlarr.homelab.rip
+      API_KEY: 446137b137124aeb895da6c31afe4f10
+      CACHE_MAX_AGE: 604800
     volumes:
       - ./cache:/app/src/cache
-    restart: unless-stopped
 ```
 
 Save the above as `docker-compose.yml` and run:
@@ -92,29 +77,6 @@ docker compose logs -f
 
 # Stop the container
 docker compose down
-```
-
-### Development Setup
-
-If you want to contribute or modify the code:
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/gaodes/booksearcher.git
-cd booksearcher
-```
-
-2. Create `.env` file and modify for your environment:
-
-```bash
-cp .env.example .env
-```
-
-3. Build and run the development container:
-
-```bash
-docker-compose -f docker-compose.dev.yml up -d
 ```
 
 ## 🚀 Usage Guide

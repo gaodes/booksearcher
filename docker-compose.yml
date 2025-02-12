@@ -2,11 +2,10 @@ services:
   booksearcher:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
+    network_mode: host
     environment:
       - TZ=Europe/Bucharest
       - PROWLARR_URL=http://your-prowlarr-url:9696
       - API_KEY=your-prowlarr-api-key
       - CACHE_MAX_AGE=604800
-    stdin_open: true
-    tty: true
     restart: unless-stopped

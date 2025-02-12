@@ -8,7 +8,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy entire src directory
 COPY ./src /app/src/
-COPY ./.env /app/.env
 
 # Set proper permissions and create cache
 RUN find /app/src -type f -name "*.py" -exec chmod +x {} \; && \
@@ -17,9 +16,9 @@ RUN find /app/src -type f -name "*.py" -exec chmod +x {} \; && \
     chmod 777 /app/src/cache
 
 # Set environment variables
-ENV RUNNING_IN_DOCKER=true
-ENV PYTHONPATH=/app/src
-ENV PATH="/app/src:${PATH}"
+ENV RUNNING_IN_DOCKER=true \
+    PYTHONPATH=/app/src \
+    PATH="/app/src:${PATH}"
 
 # Create bs command script
 RUN echo '#!/bin/sh' > /usr/local/bin/bs && \

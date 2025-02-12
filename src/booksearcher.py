@@ -149,7 +149,10 @@ class BookSearcher:
             return
         
         if args.list_cache:
-            await self.list_cached_searches()
+            if isinstance(args.list_cache, int):
+                await self.list_cached_search_by_id(args.list_cache)
+            else:
+                await self.list_cached_searches()
             return
         
         if args.clear_cache:
@@ -177,7 +180,7 @@ class BookSearcher:
         parser.add_argument('-x', '--headless', action='store_true', help='Headless mode')
         parser.add_argument('-s', '--search', type=int, help='Search ID')
         parser.add_argument('-g', '--grab', type=int, help='Result number')
-        parser.add_argument('--list-cache', action='store_true', help='List cached searches')
+        parser.add_argument('--list-cache', nargs='?', const=True, type=int, help='List cached searches or a specific search ID')
         parser.add_argument('--clear-cache', action='store_true', help='Clear cache')
         parser.add_argument('-sl', '--search-last', action='store_true', help='Use most recent search')
         parser.add_argument('-d', '--debug', action='store_true', help='Enable debug output')
@@ -423,7 +426,7 @@ class BookSearcher:
         except Exception as e:
             await self.handle_error(e, f"Grab operation (Search #{search_id}, Result #{result_num})")
 
-    async def display_results(self, results: List[Dict], search_id: int, headless: bool = False):
+    async def display_results(self, results: List[Dict], search_id: int, headless: bool = False, interactive: bool = True):
         if headless:
             self._display_headless_results(results, search_id)
             return
@@ -504,56 +507,8 @@ class BookSearcher:
         print("\nTo download, use:")
         print(f"bs -s {search_id} -g <result_number>")
 
-        await self._handle_interactive_selection(results)
-
-    def _display_headless_results(self, results: List[Dict], search_id: int):
-        """Display results summary in headless mode"""
-        kind_icon = self._get_kind_icon(self.current_kind)
-        proto_icon = self._get_protocol_icon(self.current_protocol)
-        
-        print("\n" + "═" * 50)
-        print("     ✨ Search completed! ✨")
-        print("─" * 50)
-        print(f"🔑 Search ID:  #{search_id}")
-        print(f"🔍 Term:       {self.current_search}")
-        print(f"🧩 Kind:       {kind_icon} {self.current_kind}")
-        print(f"🔌 Protocol:   {proto_icon} {self.current_protocol or 'both'}")
-        print(f"📊 Results:    {len(results)} items found")
-        
-        # Add condensed results listing
-        print("\n📚 Results:")
-        print("─" * 50)
-        for i, result in enumerate(results, 1):
-            size_str = "N/A"
-            if result.get('size', 0) > 0:
-                size = result.get('size', 0)
-                if size > 1024**3:
-                    size_str = f"{size/1024**3:.2f}GB"
-                elif size > 1024**2:
-                    size_str = f"{size/1024**2:.2f}MB"
-                else:
-                    size_str = f"{size/1024:.2f}KB"
-                    
-            protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
-            print(f"{i:2d}. {protocol_icon} [{size_str}] {result['title']}")
-
-        # Add search summary at the bottom
-        print("\n" + "═" * 50)
-        print("📊 Search Summary")
-        print("─" * 50)
-        print(f"🔍 Found: {len(results)} items")
-        protocols = []
-        for p in set(r.get('protocol', 'unknown') for r in results):
-            icon = "📡" if p == "usenet" else "🧲"
-            protocols.append(f"{icon} {p}")
-        print(f"🔌 Protocols: {', '.join(sorted(protocols))}")
-        print(f"🌐 Sites: {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
-        print("═" * 50)
-
-        print("\n📝 To download a result, use:")
-        print(f"bs -s {search_id} -g <result_number>")
-        print("\n⏰ Results will be available for 7 days")
-        print("═" * 50)
+        if interactive:
+            await self._handle_interactive_selection(results)
 
     async def _handle_interactive_selection(self, results: List[Dict]):
         """Handle interactive result selection"""
@@ -652,6 +607,30 @@ class BookSearcher:
                 print("\n❌ Please enter a valid number or 'q' to quit")
             except Exception as e:
                 await self.handle_error(e, "Cache browsing")
+
+    async def list_cached_search_by_id(self, search_id: int):
+        """List a specific cached search by ID"""
+        search_dir = os.path.join(self.cache_dir, f'search_{search_id}')
+        results_file = os.path.join(search_dir, 'results.json')
+        meta_file = os.path.join(search_dir, 'meta.json')
+
+        if not os.path.exists(results_file) or not os.path.exists(meta_file):
+            print(f"Error: Search ID #{search_id} not found")
+            return
+
+        try:
+            with open(meta_file) as f:
+                meta = json.load(f)
+            with open(results_file) as f:
+                results = json.load(f)
+
+            print(f"\n📚 Showing cached results for search #{search_id}")
+            print(f"🔍 Term: {meta['search_term']}")
+            await self.display_results(results, search_id, False, interactive=False)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Error: Failed to load search ID #{search_id}. {str(e)}")
+        finally:
+            sys.exit(0)  # Ensure the script exits after displaying the results
 
     @staticmethod
     def _format_age(age: timedelta) -> str:

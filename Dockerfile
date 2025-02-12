@@ -6,13 +6,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source files and create cache directory
-COPY ./src/*.py /app/src/
-RUN mkdir -p /app/src/cache && chmod 777 /app/src/cache
+# Create app structure and copy files
+RUN mkdir -p /app/src/cache
+COPY ./src/booksearcher.py /app/src/
+COPY ./src/core /app/src/core/
 
-# Verify directory structure
-RUN ls -la /app/src && \
-    chmod +x /app/src/booksearcher.py
+# Set proper permissions
+RUN chmod +x /app/src/booksearcher.py && \
+    chmod 777 /app/src/cache && \
+    ls -la /app/src
 
 # Set environment variable to indicate Docker environment
 ENV RUNNING_IN_DOCKER=true

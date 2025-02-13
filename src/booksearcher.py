@@ -624,11 +624,16 @@ class BookSearcher:
     def _get_kind_icon(kind: str) -> str:
         """Get icon for media kind"""
         icons = {
+            "audiobooks": "🎧",
             "Audiobooks": "🎧",
+            "ebook": "📚",
             "eBook": "📚",
-            "Audiobooks & eBooks": "🎧+📚"
+            "book": "📚",
+            "both": "🎧+📚",
+            "Audiobooks & eBooks": "🎧+📚",
+            None: "🎧+📚"  # Default to both icons
         }
-        return icons.get(kind, "📖")
+        return icons.get(kind.lower() if isinstance(kind, str) else None, "🎧+📚")
 
     @staticmethod
     def _get_protocol_icon(protocol: Optional[str]) -> str:

@@ -117,6 +117,44 @@ class BookSearcher:
         args = parser.parse_args()
         self.debug = args.debug
 
+        # Get tags silently first since we need them for searches
+        self.tags = await self.prowlarr.get_tag_ids()
+
+        # If only search term provided (no flags), set defaults for interactive search
+        if args.search_term and not any([
+            args.kind, args.protocol, args.headless, args.search, args.grab,
+            args.list_cache, args.clear_cache, args.search_last, args.debug
+        ]):
+            self.current_search = ' '.join(args.search_term)
+            self.current_kind = 'Audiobooks & eBooks'
+            self.current_protocol = None
+            
+            # Get tags for both types
+            tag_ids = [self.tags['audiobooks'], self.tags['ebooks']]
+            
+            # Show searching animation
+            self.spinner.start()
+            results = await self.prowlarr.search(self.current_search, tag_ids, None)
+            self.spinner.stop()
+
+            if not results:
+                print("No results found")
+                return
+
+            # Save and display results
+            search_id = self.get_next_search_id()
+            self.save_search_results(
+                search_id,
+                results,
+                self.current_search,
+                self.current_kind,
+                None,
+                'interactive'
+            )
+
+            await self.display_results(results, search_id, False)
+            return
+
         if self.debug:
             print("\n🔧 Debug Mode Enabled")
             print("──────────────────────")
@@ -160,9 +198,6 @@ class BookSearcher:
         if args.clear_cache:
             self.clear_cache()
             return
-
-        # Get tags silently
-        self.tags = await self.prowlarr.get_tag_ids()
 
         if args.search and args.grab:
             await self.handle_grab(args.search, args.grab)

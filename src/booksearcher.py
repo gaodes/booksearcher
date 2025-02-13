@@ -726,6 +726,52 @@ class BookSearcher:
         total = self.performance_stats['cache_hits'] + self.performance_stats['cache_misses']
         return (self.performance_stats['cache_hits'] / total * 100) if total > 0 else 0
 
+    def _display_headless_results(self, results: List[Dict], search_id: int):
+        """Display results summary in headless mode"""
+        kind_icon = self._get_kind_icon(self.current_kind)
+        proto_icon = self._get_protocol_icon(self.current_protocol)
+        
+        # Show condensed results listing
+        print("\n📚 Results:")
+        print("─" * 50)
+        for i, result in enumerate(results, 1):
+            size_str = "N/A"
+            if result.get('size', 0) > 0:
+                size = result.get('size', 0)
+                if size > 1024**3:
+                    size_str = f"{size/1024**3:.2f}GB"
+                elif size > 1024**2:
+                    size_str = f"{size/1024**2:.2f}MB"
+                else:
+                    size_str = f"{size/1024:.2f}KB"
+                    
+            protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
+            print(f"{i:2d}. {protocol_icon} [{size_str}] {result['title']}")
+
+        # Show summary
+        print("\n" + "═" * 60)
+        print("✨ Search Summary ✨")
+        print("═" * 60)
+        print(f"🔑 Search ID:  #{search_id}")
+        print(f"🔍 Term:       {self.current_search}")
+        print(f"🧩 Kind:       {kind_icon} {self.current_kind}")
+        print(f"🔌 Protocol:   {proto_icon} {self.current_protocol or 'both'}")
+        print(f"📊 Results:    {len(results)} items found")
+        
+        # Show protocol and indexer information
+        protocols = []
+        for p in set(r.get('protocol', 'unknown') for r in results):
+            icon = "📡" if p == "usenet" else "🧲"
+            protocols.append(f"{icon} {p}")
+        print(f"🔗 Available:  {', '.join(sorted(protocols))}")
+        print(f"🌐 Sites:      {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
+        print("═" * 60)
+
+        print("\n📝 To download a result, use:")
+        print(f"bs -s {search_id} -g <result_number>")
+        print("\n⏰ Results will be available for 7 days")
+        print("═" * 60)
+
 async def main():
     searcher = BookSearcher()
     await searcher.run()

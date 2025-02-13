@@ -148,11 +148,13 @@ class BookSearcher:
             await self.handle_grab(latest_id, args.grab)
             return
         
-        if args.list_cache:
-            if isinstance(args.list_cache, int):
-                await self.list_cached_search_by_id(args.list_cache)
-            else:
+        if args.list_cache is not None:
+            # If no specific ID provided, show all searches
+            if isinstance(args.list_cache, bool):
                 await self.list_cached_searches()
+            # Otherwise show specific search details
+            else:
+                await self.list_cached_search_by_id(args.list_cache)
             return
         
         if args.clear_cache:
@@ -546,20 +548,24 @@ class BookSearcher:
                 continue
 
             try:
-                search_id = int(entry.split('_')[1])
+                sid = int(entry.split('_')[1])
                 meta_file = os.path.join(self.cache_dir, entry, 'meta.json')
-                results_file = os.path.join(self.cache_dir, entry, 'results.json')
                 
                 with open(meta_file) as f:
                     meta = json.load(f)
                 
                 timestamp = datetime.fromisoformat(meta['timestamp'])
+                age = datetime.now() - timestamp
+                age_str = self._format_age(age)
+                kind_icon = self._get_kind_icon(meta['kind'])
+                
                 searches.append({
-                    'id': search_id,
+                    'id': sid,
                     'term': meta['search_term'],
                     'kind': meta['kind'],
-                    'timestamp': timestamp,
-                    'results_file': results_file
+                    'icon': kind_icon,
+                    'age': age_str,
+                    'timestamp': timestamp
                 })
             except (ValueError, FileNotFoundError, json.JSONDecodeError):
                 continue
@@ -568,45 +574,18 @@ class BookSearcher:
             print("No valid cached searches found")
             return
 
-        while True:
-            # Display cached searches
-            print("\nCached Searches:")
-            print("===============")
-            sorted_searches = sorted(searches, key=lambda x: x['timestamp'], reverse=True)
-            for search in sorted_searches:
-                age = datetime.now() - search['timestamp']
-                age_str = self._format_age(age)
-                kind_icon = self._get_kind_icon(search['kind'])
-                print(f"\n[{search['id']}] {search['term']}")
-                print(f"🧩 Kind: {kind_icon} {search['kind']}")
-                print(f"⏰ Age:  {age_str}")
+        # Sort by ID in ascending order (oldest first)
+        searches.sort(key=lambda x: x['id'])
 
-            # Interactive selection
-            print("\nEnter search ID to view results (or 'q' to quit): ")
-            choice = input("✨ > ").strip().lower()
-            
-            if choice == 'q':
-                return
+        print("\n📚 Cached Searches")
+        print("═══════════════════")
+        for search in searches:
+            print(f"\n[{search['id']}] {search['term']}")
+            print(f"  🧩 Kind: {search['icon']} {search['kind']}")
+            print(f"  ⏰ Age:  {search['age']}")
 
-            try:
-                selected_id = int(choice)
-                selected = next((s for s in searches if s['id'] == selected_id), None)
-                
-                if selected:
-                    # Load and display the cached results
-                    with open(selected['results_file']) as f:
-                        results = json.load(f)
-                    
-                    print(f"\n📚 Showing cached results for search #{selected_id}")
-                    print(f"🔍 Term: {selected['term']}")
-                    await self.display_results(results, selected_id, False)
-                    return  # Return after displaying results since display_results has its own grab functionality
-                else:
-                    print("\n❌ Invalid search ID. Please try again.")
-            except ValueError:
-                print("\n❌ Please enter a valid number or 'q' to quit")
-            except Exception as e:
-                await self.handle_error(e, "Cache browsing")
+        print("\n✨ To view details of a specific search, use:")
+        print("bs --list-cache <search_id>")
 
     async def list_cached_search_by_id(self, search_id: int):
         """List a specific cached search by ID"""

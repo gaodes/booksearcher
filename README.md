@@ -43,8 +43,8 @@ docker run -d \
   --name booksearcher \
   --network host \
   -v "$(pwd)/cache:/app/src/cache" \
-  -e PROWLARR_URL=https://prowlarr.homelab.rip \
-  -e API_KEY=446137b137124aeb895da6c31afe4f10 \
+  -e PROWLARR_URL=https://prowlarr.your.domain \
+  -e API_KEY='YOUR PROWLARR API KEY' \
   -e CACHE_MAX_AGE=604800 \
   gaodes/booksearcher:latest
 ```
@@ -59,8 +59,8 @@ services:
     network_mode: host
     restart: unless-stopped
     environment:
-      PROWLARR_URL: https://prowlarr.homelab.rip
-      API_KEY: 446137b137124aeb895da6c31afe4f10
+      PROWLARR_URL: 'https://prowlarr.your.domain # or ip'
+      API_KEY: 'YOUR PROWLARR API KEY'
       CACHE_MAX_AGE: 604800
     volumes:
       - ./cache:/app/src/cache

@@ -84,7 +84,9 @@
       prCreation: 'immediate',
     },
     {
-      matchVulnerabilityAlerts: true,
+      matchSourceUrlPrefixes: ["https://github.com"],
+      matchUpdateTypes: ["patch", "minor", "major"],
+      matchSecurityAlerts: true,
       prPriority: 5,
       labels: ['security'],
       automerge: true
@@ -154,6 +156,7 @@
     },
   ],
   vulnerabilityAlerts: {
+    enabled: true,
     labels: [
       'security',
     ],

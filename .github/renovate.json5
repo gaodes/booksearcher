@@ -84,6 +84,12 @@
       prCreation: 'immediate',
     },
     {
+      matchVulnerabilityAlerts: true,
+      prPriority: 5,
+      labels: ['security'],
+      automerge: true
+    },
+    {
       matchManagers: ['pip_requirements'],
       labels: ['python-deps'],
       rangeStrategy: 'pin',
@@ -151,8 +157,7 @@
     labels: [
       'security',
     ],
-    automerge: true,
-    prPriority: 5
+    automerge: true
   },
   schedule: ['after 10pm every weekday', 'before 5am every weekday', 'every weekend'],
   updateNotScheduled: false,

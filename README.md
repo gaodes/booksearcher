@@ -45,8 +45,8 @@ Run the container with persistent cache and configuration:
 docker run -d \
   --name booksearcher \
   --network host \
-  -v "$(pwd)/cache:/app/src/cache" \
-  -v "$(pwd)/config:/app/config" \
+  -v "$(pwd)/cache:/app/cache" \
+  -v "$(pwd)/config/config.yaml:/app/config/config.yaml" \
   -e PROWLARR_URL=https://prowlarr.your.domain \
   -e API_KEY='YOUR PROWLARR API KEY' \
   -e CACHE_MAX_AGE=168 \
@@ -63,31 +63,30 @@ services:
     image: gaodes/booksearcher:latest
     container_name: booksearcher
     network_mode: host
-    restart: unless-stopped
     volumes:
-      - ./cache:/app/src/cache  # For persistent cache
-      - ./config:/app/config    # For persistent configuration
+      - ./cache:/app/cache  # For persistent cache
+      - ./config/config.yaml:/app/config/config.yaml  # For persistent configuration
     environment:
-      PROWLARR_URL: 'https://prowlarr.your.domain'
-      API_KEY: 'YOUR PROWLARR API KEY'
-      CACHE_MAX_AGE: 168  # 7 days in hours
-      CACHE_MAX_SIZE: 100  # Size in MB
-      CACHE_MAX_ENTRIES: 100  # Maximum number of cached searches
+      - TZ=Europe/Bucharest
+      # These values will be used to create the initial config.yaml if it doesn't exist
+      - PROWLARR_URL=http://your-prowlarr-url:9696
+      - API_KEY=your-prowlarr-api-key
+      - CACHE_MAX_AGE=168  # 7 days in hours
+      - CACHE_MAX_SIZE=100  # Size in MB
+      - CACHE_MAX_ENTRIES=100  # Maximum number of cached searches
+    restart: unless-stopped
 ```
 
-The configuration will be stored in `config/config.yaml` and persisted between container restarts. You can modify this file directly without needing to change environment variables or restart the container.
-
-Save the above as `docker-compose.yml` and run:
-
+Before starting the container, copy and customize the configuration:
 ```bash
+# Copy the example config
+cp config/config.yaml.example config/config.yaml
+
+# Edit the configuration with your values
+nano config/config.yaml
+
 # Start the container
 docker compose up -d
-
-# View logs
-docker compose logs -f
-
-# Stop the container
-docker compose down
 ```
 
 ## 🚀 Usage Guide

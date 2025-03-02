@@ -20,12 +20,38 @@ class CacheError(Exception):
     """Base exception for cache related errors"""
     pass
 
+class CacheFullError(CacheError):
+    """Raised when cache is full and cleanup failed"""
+    pass
+
+class CacheIOError(CacheError):
+    """Raised when cache IO operations fail"""
+    pass
+
+class NetworkError(Exception):
+    """Base exception for network related errors"""
+    pass
+
+class APIError(NetworkError):
+    """Raised when API calls fail"""
+    pass
+
+class RetryExceededError(NetworkError):
+    """Raised when maximum retries are exceeded"""
+    pass
+
 class PerformanceStats(TypedDict):
     start_time: Optional[datetime]
     total_searches: int
     total_grabs: int
     cache_hits: int
     cache_misses: int
+    cache_cleanups: int
+    cache_size: int
+    cache_entries: int
+    network_requests: int
+    network_errors: int
+    total_response_time: float
 
 class LastError(TypedDict):
     timestamp: str
@@ -71,9 +97,18 @@ class BookSearcher:
     SEPARATOR_THIN = "─" * 80
     SEPARATOR_THICK = "═" * 80
     
+    # Add retry configuration
+    MAX_RETRIES = 3
+    RETRY_DELAY = 1  # Base delay in seconds
+    
+    # Add connection pool configuration
+    POOL_SIZE = 10
+    POOL_TIMEOUT = 30
+    
     def __init__(self) -> None:
         """Initialize the BookSearcher with necessary components and settings."""
         self.cache_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
+        self.session: Optional[aiohttp.ClientSession] = None
         self.prowlarr: ProwlarrAPI = ProwlarrAPI(settings["PROWLARR_URL"], settings["API_KEY"])
         self.spinner: Spinner = Spinner()
         self.debug: bool = False
@@ -84,7 +119,13 @@ class BookSearcher:
             'total_searches': 0,
             'total_grabs': 0,
             'cache_hits': 0,
-            'cache_misses': 0
+            'cache_misses': 0,
+            'cache_cleanups': 0,
+            'cache_size': 0,
+            'cache_entries': 0,
+            'network_requests': 0,
+            'network_errors': 0,
+            'total_response_time': 0
         }
         self.current_search: Optional[str] = None
         self.current_kind: Optional[str] = None
@@ -92,51 +133,111 @@ class BookSearcher:
         
         try:
             os.makedirs(self.cache_dir, exist_ok=True)
-            # Run initial cache cleanup
+            # Run initial cache cleanup and stats update
             self._cleanup_cache()
+            self._update_cache_stats()
         except OSError as e:
-            raise CacheError(f"Failed to create cache directory: {str(e)}")
+            raise CacheIOError(f"Failed to create cache directory: {str(e)}")
+
+    async def _init_session(self) -> None:
+        """Initialize connection pool"""
+        if not self.session:
+            connector = aiohttp.TCPConnector(
+                limit=self.POOL_SIZE,
+                ttl_dns_cache=300,  # Cache DNS results for 5 minutes
+                enable_cleanup_closed=True
+            )
+            timeout = aiohttp.ClientTimeout(total=self.POOL_TIMEOUT)
+            self.session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                raise_for_status=True
+            )
+
+    async def _close_session(self) -> None:
+        """Close connection pool"""
+        if self.session:
+            await self.session.close()
+            self.session = None
 
     async def handle_error(self, error: Exception, context: str = "") -> None:
-        """
-        Centralized error handling with improved error categorization and logging.
+        """Enhanced error handling with specific error types and better context"""
+        error_type = type(error).__name__
+        error_msg = str(error)
         
-        Args:
-            error: The exception that occurred
-            context: Additional context about where the error occurred
-        """
-        self.spinner.stop()
-        
-        error_category = "Unknown"
-        if isinstance(error, SearchError):
-            error_category = "Search"
-        elif isinstance(error, CacheError):
-            error_category = "Cache"
-        elif isinstance(error, aiohttp.ClientError):
-            error_category = "Network"
-        
+        # Update last error state
         self.last_error = {
             'timestamp': datetime.now().isoformat(),
-            'context': context,
-            'type': f"{error_category}: {type(error).__name__}",
-            'message': str(error)
+            'type': error_type,
+            'message': error_msg,
+            'context': context
         }
-
-        print(f"\n❌ {error_category} Error: {str(error)}")
+        
+        # Log the error with context
+        self._log_debug(f"Error in {context}: {error_type} - {error_msg}", "error")
+        
+        # Format user-facing error message based on error type
+        if isinstance(error, CacheError):
+            print(f"\n❌ Cache Error: {error_msg}")
+            if isinstance(error, CacheFullError):
+                print("💡 Tip: Try clearing the cache with --clear-cache")
+        elif isinstance(error, NetworkError):
+            print(f"\n❌ Network Error: {error_msg}")
+            if isinstance(error, RetryExceededError):
+                print("💡 Tip: Check your internet connection and try again")
+            elif isinstance(error, APIError):
+                print("💡 Tip: Verify your Prowlarr configuration and API key")
+        else:
+            print(f"\n❌ Error: {error_msg}")
         
         if self.debug:
             import traceback
-            print("\n🔧 Debug Information:")
-            print(f"  Category: {error_category}")
-            print(f"  Context:  {context}")
-            print(f"  Type:     {type(error).__name__}")
-            print(f"  Location: {error.__traceback__.tb_frame.f_code.co_filename}:{error.__traceback__.tb_lineno}")
-            print("\n📜 Traceback:")
+            print("\n🔍 Debug Information:")
+            print("─" * 40)
+            print(f"Error Type: {error_type}")
+            print(f"Context: {context}")
+            print(f"Timestamp: {self.last_error['timestamp']}")
+            print("\nTraceback:")
             print(traceback.format_exc())
+            print("─" * 40)
+
+    async def _retry_operation(self, operation, *args, **kwargs):
+        """
+        Retry an async operation with exponential backoff.
+        
+        Args:
+            operation: Async function to retry
+            *args: Positional arguments for the operation
+            **kwargs: Keyword arguments for the operation
             
-            if hasattr(self.prowlarr, 'last_error') and self.prowlarr.last_error:
-                print("\n🌐 Last API Error:")
-                print(json.dumps(self.prowlarr.last_error, indent=2))
+        Returns:
+            The result of the successful operation
+            
+        Raises:
+            RetryExceededError: If maximum retries are exceeded
+        """
+        last_error = None
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                return await operation(*args, **kwargs)
+            except Exception as e:
+                last_error = e
+                if attempt < self.MAX_RETRIES - 1:
+                    delay = self.RETRY_DELAY * (2 ** attempt)  # Exponential backoff
+                    if self.debug:
+                        self._log_debug(
+                            f"Attempt {attempt + 1} failed: {str(e)}. "
+                            f"Retrying in {delay}s...",
+                            "retry"
+                        )
+                    await asyncio.sleep(delay)
+                else:
+                    break
+        
+        raise RetryExceededError(
+            f"Operation failed after {self.MAX_RETRIES} attempts. "
+            f"Last error: {str(last_error)}"
+        )
 
     def _display_header(self, title: str) -> None:
         """Display a consistent header with title"""
@@ -195,115 +296,119 @@ class BookSearcher:
         return choices[choice]
 
     async def run(self):
-        self.performance_stats['start_time'] = datetime.now()
-        parser = self.create_parser()
-        args = parser.parse_args()
-        self.debug = args.debug
-
+        """Run the BookSearcher with connection pool management"""
         try:
+            await self._init_session()
+            self.performance_stats['start_time'] = datetime.now()
+            
+            parser = self.create_parser()
+            args = parser.parse_args()
+            
+            self.debug = args.debug
+            
+            if self.debug:
+                print("\n🔧 Debug Mode Enabled")
+                print("──────────────────────")
+                print(f"📂 Cache Dir: {self.cache_dir}")
+                print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
+                print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}h")
+                print(f"🌐 Pool Size: {self.POOL_SIZE}")
+                print("──────────────────────\n")
+            
             # Get tags silently first since we need them for searches
             self.tags = await self.prowlarr.get_tag_ids()
-        except Exception as e:
-            await self.handle_error(e, "Failed to get tag IDs")
-            return
 
-        if self.debug:
-            print("\n🔧 Debug Mode Enabled")
-            print("──────────────────────")
-            print(f"📂 Cache Dir: {self.cache_dir}")
-            print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
-            print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}s")
-            print(f"🏷️  Tags: {self.tags}")
-            print("──────────────────────\n")
+            if self.debug:
+                print("\n🔧 Debug Mode Enabled")
+                print("──────────────────────")
+                print(f"📂 Cache Dir: {self.cache_dir}")
+                print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
+                print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}s")
+                print(f"🏷️  Tags: {self.tags}")
+                print("──────────────────────\n")
 
-        # If only search term provided (no flags), set defaults for interactive search
-        if args.search_term and not any([
-            args.kind, args.protocol, args.headless, args.search, args.grab,
-            args.list_cache, args.clear_cache, args.search_last, args.debug
-        ]):
-            self.current_search = ' '.join(args.search_term)
-            self.current_kind = 'Audiobooks & eBooks'
-            self.current_protocol = None
-            
-            # Get tags for both types
-            tag_ids = [self.tags['audiobooks'], self.tags['ebooks']]
-            
-            # Show searching animation
-            self.spinner.start()
-            results = await self.prowlarr.search(self.current_search, tag_ids, None)
-            self.spinner.stop()
+            # If only search term provided (no flags), set defaults for interactive search
+            if args.search_term and not any([
+                args.kind, args.protocol, args.headless, args.search, args.grab,
+                args.list_cache, args.clear_cache, args.search_last, args.debug
+            ]):
+                self.current_search = ' '.join(args.search_term)
+                self.current_kind = 'Audiobooks & eBooks'
+                self.current_protocol = None
+                
+                # Get tags for both types
+                tag_ids = [self.tags['audiobooks'], self.tags['ebooks']]
+                
+                # Show searching animation
+                self.spinner.start()
+                results = await self.prowlarr.search(self.current_search, tag_ids, None)
+                self.spinner.stop()
 
-            if not results:
-                print("No results found")
+                if not results:
+                    print("No results found")
+                    return
+
+                # Save and display results
+                search_id = self.get_next_search_id()
+                self.save_search_results(
+                    search_id,
+                    results,
+                    self.current_search,
+                    self.current_kind,
+                    None,
+                    'interactive'
+                )
+
+                await self.display_results(results, search_id, False)
                 return
 
-            # Save and display results
-            search_id = self.get_next_search_id()
-            self.save_search_results(
-                search_id,
-                results,
-                self.current_search,
-                self.current_kind,
-                None,
-                'interactive'
-            )
+            if args.search_last and args.grab:
+                # Find most recent search
+                searches = []
+                for entry in os.listdir(self.cache_dir):
+                    if entry.startswith('search_'):
+                        try:
+                            search_id = int(entry.split('_')[1])
+                            meta_file = os.path.join(self.cache_dir, entry, 'meta.json')
+                            if os.path.exists(meta_file):
+                                searches.append((search_id, os.path.getmtime(meta_file)))
+                        except (ValueError, OSError):
+                            continue
 
-            await self.display_results(results, search_id, False)
-            return
+                if not searches:
+                    print("No recent searches found")
+                    return
 
-        if self.debug:
-            print("\n🔧 Debug Mode Enabled")
-            print("──────────────────────")
-            print(f"📂 Cache Dir: {self.cache_dir}")
-            print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
-            print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}s")
-            print("──────────────────────\n")
-
-        # Handle search-last functionality
-        if args.search_last and args.grab:
-            # Find most recent search
-            searches = []
-            for entry in os.listdir(self.cache_dir):
-                if entry.startswith('search_'):
-                    try:
-                        search_id = int(entry.split('_')[1])
-                        meta_file = os.path.join(self.cache_dir, entry, 'meta.json')
-                        if os.path.exists(meta_file):
-                            searches.append((search_id, os.path.getmtime(meta_file)))
-                    except (ValueError, OSError):
-                        continue
-
-            if not searches:
-                print("No recent searches found")
+                latest_id = max(searches, key=lambda x: x[1])[0]
+                print(f"Using most recent search #{latest_id}")
+                await self.handle_grab(latest_id, args.grab)
+                return
+            
+            if args.list_cache is not None:
+                # If no specific ID provided, show all searches
+                if isinstance(args.list_cache, bool):
+                    await self.list_cached_searches()
+                # Otherwise show specific search details
+                else:
+                    await self.list_cached_search_by_id(args.list_cache)
+                return
+            
+            if args.clear_cache:
+                self.clear_cache()
                 return
 
-            latest_id = max(searches, key=lambda x: x[1])[0]
-            print(f"Using most recent search #{latest_id}")
-            await self.handle_grab(latest_id, args.grab)
-            return
-        
-        if args.list_cache is not None:
-            # If no specific ID provided, show all searches
-            if isinstance(args.list_cache, bool):
-                await self.list_cached_searches()
-            # Otherwise show specific search details
-            else:
-                await self.list_cached_search_by_id(args.list_cache)
-            return
-        
-        if args.clear_cache:
-            self.clear_cache()
-            return
+            if args.search and args.grab:
+                await self.handle_grab(args.search, args.grab)
+                return
 
-        if args.search and args.grab:
-            await self.handle_grab(args.search, args.grab)
-            return
+            # Handle search operation
+            await self.handle_search(args)
+            
+            if self.debug:
+                await self.show_debug_stats()
 
-        # Handle search operation
-        await self.handle_search(args)
-        
-        if self.debug:
-            await self.show_debug_stats()
+        finally:
+            await self._close_session()
 
     def create_parser(self) -> argparse.ArgumentParser:
         """Create argument parser with all supported flags"""
@@ -329,15 +434,22 @@ class BookSearcher:
     def _get_cache_size(self) -> int:
         """
         Calculate the total size of the cache directory in bytes.
+        Uses a more efficient algorithm with os.scandir().
         
         Returns:
             int: Total size of cache in bytes
         """
         total_size = 0
-        for dirpath, _, filenames in os.walk(self.cache_dir):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                total_size += os.path.getsize(fp)
+        try:
+            for entry in os.scandir(self.cache_dir):
+                if entry.is_file():
+                    total_size += entry.stat().st_size
+                elif entry.is_dir():
+                    for root, _, files in os.walk(entry.path):
+                        total_size += sum(os.path.getsize(os.path.join(root, name)) for name in files)
+        except OSError as e:
+            self._log_debug(f"Error calculating cache size: {e}", "cache")
+            return 0
         return total_size
 
     def _get_cache_entries(self) -> List[tuple[int, str, float]]:
@@ -364,30 +476,79 @@ class BookSearcher:
                     continue
         return sorted(entries, key=lambda x: x[2])  # Sort by access time
 
+    def _update_cache_stats(self) -> None:
+        """Update cache statistics"""
+        try:
+            self.performance_stats['cache_size'] = self._get_cache_size()
+            self.performance_stats['cache_entries'] = len([
+                d for d in os.listdir(self.cache_dir)
+                if d.startswith('search_') and os.path.isdir(os.path.join(self.cache_dir, d))
+            ])
+        except OSError as e:
+            self._log_debug(f"Error updating cache stats: {e}", "cache")
+
     def _cleanup_cache(self) -> None:
         """
-        Clean up the cache directory based on size and entry limits.
-        Removes oldest accessed entries first when limits are exceeded.
+        Clean up the cache directory based on size, entry limits, and age.
+        Removes entries that exceed the maximum age first, then oldest accessed entries
+        if still over limits.
         """
         try:
-            # Check if we're over the entry limit
             entries = self._get_cache_entries()
+            cleaned = False
+            
+            # First pass: Remove entries exceeding max age
+            max_age = timedelta(hours=settings["CACHE_MAX_AGE"])
+            now = datetime.now()
+            
+            entries = [
+                entry for entry in entries
+                if now - datetime.fromtimestamp(entry[2]) <= max_age
+            ]
+            
+            # Second pass: Check entry count limit
             while len(entries) > settings["CACHE_MAX_ENTRIES"]:
                 search_id, path, _ = entries.pop(0)  # Remove oldest
                 self._remove_cache_entry(path)
+                cleaned = True
                 if self.debug:
                     self._log_debug(f"Removed cache entry {search_id} due to entry limit")
 
-            # Check if we're over the size limit
-            while self._get_cache_size() > settings["CACHE_MAX_SIZE"] and entries:
+            # Third pass: Check size limit
+            current_size = self._get_cache_size()
+            while current_size > settings["CACHE_MAX_SIZE"] and entries:
                 search_id, path, _ = entries.pop(0)  # Remove oldest
+                current_size -= self._get_entry_size(path)
                 self._remove_cache_entry(path)
+                cleaned = True
                 if self.debug:
                     self._log_debug(f"Removed cache entry {search_id} due to size limit")
+            
+            if cleaned:
+                self.performance_stats['cache_cleanups'] += 1
+                self._update_cache_stats()
 
         except Exception as e:
-            if self.debug:
-                self._log_debug(f"Cache cleanup error: {str(e)}", "cleanup")
+            self._log_debug(f"Cache cleanup error: {str(e)}", "cleanup")
+            raise CacheError(f"Cache cleanup failed: {str(e)}")
+
+    def _get_entry_size(self, path: str) -> int:
+        """
+        Get the size of a cache entry directory.
+        
+        Args:
+            path: Path to the cache entry directory
+            
+        Returns:
+            int: Size of the entry in bytes
+        """
+        try:
+            total = 0
+            for root, _, files in os.walk(path):
+                total += sum(os.path.getsize(os.path.join(root, name)) for name in files)
+            return total
+        except OSError:
+            return 0
 
     def _remove_cache_entry(self, path: str) -> None:
         """
@@ -433,7 +594,7 @@ class BookSearcher:
             raise CacheError(f"Failed to save search results: {str(e)}")
 
     async def handle_search(self, args):
-        """Handle search operation with unified interaction"""
+        """Handle search operation with enhanced error handling"""
         try:
             # Handle headless mode
             if args.headless and args.search_term:
@@ -448,12 +609,15 @@ class BookSearcher:
             # Normal search with arguments
             await self._handle_normal_search(args)
 
+        except aiohttp.ClientError as e:
+            await self.handle_error(APIError(f"Failed to connect to Prowlarr: {str(e)}"), "API Connection")
+        except asyncio.TimeoutError:
+            await self.handle_error(NetworkError("Request timed out"), "Network Timeout")
         except Exception as e:
             await self.handle_error(e, "Search operation")
 
     async def _handle_headless_search(self, args):
-        """Handle headless search with unified formatting"""
-        # Store current search parameters
+        """Handle headless search with retry mechanism"""
         self.current_search = ' '.join(args.search_term)
         self.current_kind = args.kind if args.kind else 'both'
         self.current_protocol = args.protocol
@@ -470,7 +634,6 @@ class BookSearcher:
         if args.protocol:
             protocol = "usenet" if args.protocol == "nzb" else "torrent"
 
-        # Perform search
         if self.current_search:
             if self.debug:
                 print(f"\n🔍 Executing search with:")
@@ -478,11 +641,18 @@ class BookSearcher:
                 print(f"  Tags: {tag_ids}")
                 print(f"  Protocol: {protocol}")
             
-            # Always show spinner during search
             self.spinner.start()
-            results = await self.prowlarr.search(self.current_search, tag_ids, protocol)
-            self.spinner.stop()
-            
+            try:
+                # Use retry mechanism for search
+                results = await self._retry_operation(
+                    self.prowlarr.search,
+                    self.current_search,
+                    tag_ids,
+                    protocol
+                )
+            finally:
+                self.spinner.stop()
+
             if self.debug:
                 print(f"\n📊 Results Summary:")
                 print(f"  Total results: {len(results)}")
@@ -494,16 +664,20 @@ class BookSearcher:
                 print("No results found")
                 return
 
-            # Save results
-            search_id = self.get_next_search_id()
-            self.save_search_results(
-                search_id, 
-                results,
-                self.current_search,
-                args.kind or 'both',
-                protocol,
-                'headless'
-            )
+            # Save results with error handling
+            try:
+                search_id = self.get_next_search_id()
+                self.save_search_results(
+                    search_id,
+                    results,
+                    self.current_search,
+                    args.kind or 'both',
+                    protocol,
+                    'headless'
+                )
+            except CacheError as e:
+                await self.handle_error(e, "Cache Operation")
+                return
 
             await self.display_results(results, search_id, True)
 
@@ -654,45 +828,42 @@ class BookSearcher:
         return f"{size/1024:.2f}KB"
 
     def _format_result_line(self, index: int, result: Dict) -> List[str]:
-        """Format a single result with detailed information and underlined title"""
-        # Calculate title with index
+        """
+        Format a single result with detailed information and underlined title.
+        Optimized for performance with string concatenation.
+        """
+        # Pre-calculate common values
         title = f"【{index}】{result['title']}"
+        protocol = result.get('protocol', 'unknown')
+        is_usenet = protocol == "usenet"
         
-        # Get status and icons
-        protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
-        status = f"💫 {result.get('grabs', 0)} grabs" if result.get('protocol') == "usenet" else \
-                f"🌱 {result.get('seeders', 0)} seeders" if result.get('seeders', 0) > 0 else "💀 Dead torrent"
+        # Calculate visual width efficiently
+        visual_width = len(title)
+        visual_width += title.count('【') + title.count('】')  # Add 1 for each bracket
+        visual_width += sum(1 for c in title if ord(c) > 0x2E80)  # Add 1 for each CJK character
         
-        # Format size
+        # Build status string based on protocol
+        if is_usenet:
+            status = f"💫 {result.get('grabs', 0)} grabs"
+        else:
+            seeders = result.get('seeders', 0)
+            status = f"🌱 {seeders} seeders" if seeders > 0 else "💀 Dead torrent"
+        
+        # Format size once
         size_str = self._format_result_size(result.get('size', 0))
         
-        # Create the formatted output
-        output = []
-        output.append(title)
-        
-        # Calculate visual width for Unicode characters
-        visual_width = len(title)
-        # Add extra width for special Unicode characters
-        visual_width += title.count('【') + title.count('】')  # Add 1 for each bracket
-        visual_width += len([c for c in title if ord(c) > 0x2E80])  # Add 1 for each CJK character
-        
-        # Create underline with adjusted width
-        output.append("─" * visual_width)
-        
-        # Add details with consistent formatting
-        details = [
-            f"📦 Size:          {size_str}",
-            f"📅 Published:     {result.get('publishDate', 'N/A')[:10]}", 
-            f"🔌 Protocol:      {protocol_icon} {result.get('protocol', 'N/A')}", 
-            f"🔍 Indexer:       {result.get('indexer', 'N/A')}", 
-            f"⚡ Status:        {status}"
+        # Build output list with minimal string operations
+        output = [
+            title,
+            "─" * visual_width,
+            f"  📦 Size:          {size_str}",
+            f"  📅 Published:     {result.get('publishDate', 'N/A')[:10]}", 
+            f"  🔌 Protocol:      {'📡' if is_usenet else '🧲'} {protocol}", 
+            f"  🔍 Indexer:       {result.get('indexer', 'N/A')}", 
+            f"  ⚡ Status:        {status}",
+            ""  # Empty line for spacing
         ]
         
-        # Add each detail line with proper indentation
-        for detail in details:
-            output.append(f"  {detail}")
-            
-        output.append("")  # Add empty line for spacing
         return output
 
     def _display_search_summary(self, results: List[Dict], search_id: int) -> None:
@@ -737,13 +908,19 @@ class BookSearcher:
         print(self.SEPARATOR_THICK)
 
     async def display_results(self, results: List[Dict], search_id: int, headless: bool = False, interactive: bool = True):
-        """Display search results in a detailed, formatted view"""
+        """Display search results with optimized formatting"""
+        # Pre-format all results
+        formatted_results = []
+        for i, result in enumerate(results, 1):
+            formatted_results.extend(self._format_result_line(i, result))
+        
+        # Display results in batches for better performance
         self._display_header("📚 Search Results Found 📚")
         
-        # Display each result in detailed format
-        for i, result in enumerate(results, 1):
-            for line in self._format_result_line(i, result):
-                print(line)
+        BATCH_SIZE = 10
+        for i in range(0, len(formatted_results), BATCH_SIZE):
+            batch = formatted_results[i:i + BATCH_SIZE]
+            print("\n".join(batch))
         
         # Show search summary
         self._display_search_summary(results, search_id)

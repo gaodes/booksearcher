@@ -12,8 +12,8 @@ COPY ./src /app/src/
 # Set proper permissions and create cache
 RUN find /app/src -type f -name "*.py" -exec chmod +x {} \; && \
     find /app/src -type f -name "*.sh" -exec chmod +x {} \; && \
-    mkdir -p /app/src/cache && \
-    chmod 777 /app/src/cache
+    mkdir -p /app/cache && \
+    chmod 777 /app/cache
 
 # Set environment variables
 ENV RUNNING_IN_DOCKER=true \

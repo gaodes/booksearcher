@@ -73,7 +73,7 @@ class BookSearcher:
     
     def __init__(self) -> None:
         """Initialize the BookSearcher with necessary components and settings."""
-        self.cache_dir: str = os.path.join(os.path.dirname(__file__), 'cache')
+        self.cache_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'cache')
         self.prowlarr: ProwlarrAPI = ProwlarrAPI(settings["PROWLARR_URL"], settings["API_KEY"])
         self.spinner: Spinner = Spinner()
         self.debug: bool = False

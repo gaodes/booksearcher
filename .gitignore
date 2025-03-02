@@ -6,7 +6,8 @@ __pycache__/
 # Environment directories
 venv/
 env/
-.env
+.env*
+!.env.example
 
 # IDE specific files
 .vscode/
@@ -22,6 +23,13 @@ build/
 *.log
 .DS_Store
 
-# Docker test files
+# Test files
 docker-compose.test.yml
+tests/
+config/test_config.yaml
+*.test.yaml
 *.test.yml
+
+# Configuration
+config/*
+!config/config.yaml.example

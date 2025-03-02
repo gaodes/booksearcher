@@ -39,13 +39,14 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 
 ### Quick Start with Docker
 
-Run the container with persistent cache:
+Run the container with persistent cache and configuration:
 
 ```bash
 docker run -d \
   --name booksearcher \
   --network host \
   -v "$(pwd)/cache:/app/src/cache" \
+  -v "$(pwd)/config:/app/config" \
   -e PROWLARR_URL=https://prowlarr.your.domain \
   -e API_KEY='YOUR PROWLARR API KEY' \
   -e CACHE_MAX_AGE=168 \
@@ -63,15 +64,18 @@ services:
     container_name: booksearcher
     network_mode: host
     restart: unless-stopped
+    volumes:
+      - ./cache:/app/src/cache  # For persistent cache
+      - ./config:/app/config    # For persistent configuration
     environment:
-      PROWLARR_URL: 'https://prowlarr.your.domain # or ip'
+      PROWLARR_URL: 'https://prowlarr.your.domain'
       API_KEY: 'YOUR PROWLARR API KEY'
       CACHE_MAX_AGE: 168  # 7 days in hours
       CACHE_MAX_SIZE: 100  # Size in MB
       CACHE_MAX_ENTRIES: 100  # Maximum number of cached searches
-    volumes:
-      - ./cache:/app/src/cache
 ```
+
+The configuration will be stored in `config/config.yaml` and persisted between container restarts. You can modify this file directly without needing to change environment variables or restart the container.
 
 Save the above as `docker-compose.yml` and run:
 
@@ -195,7 +199,7 @@ Available commands and flags for `bs` (booksearcher):
 ## 💾 Cache System
 
 - 📂 Cache location:
-    - Inside container: `/app/src/cache`
+    - Inside container: `/app/cache`
     - Host machine: `./cache` (when using volume mount)
 - 🔧 Configurable cache settings:
     - `CACHE_MAX_AGE`: Maximum age of cache entries in hours (default: 168 - 7 days)
@@ -276,3 +280,60 @@ Contributions welcome! Please:
 - 📝 Open an issue for bugs
 - 💡 Feature requests welcome
 - 🌟 Star the repo if you find it useful!
+
+## 🛠️ Configuration
+
+BookSearcher supports two ways to configure the application:
+
+### 1. YAML Configuration (Recommended)
+
+The application uses a YAML configuration file located at `config/config.yaml`. This file will be automatically created on first run using environment variables or default values.
+
+Example configuration:
+```yaml
+prowlarr:
+  url: http://localhost:9696
+  api_key: your-api-key
+cache:
+  max_age: 168  # Cache duration in hours
+  max_size: 100  # Maximum cache size in MB
+  max_entries: 100  # Maximum number of cached searches
+search:
+  default_protocol: both
+  default_media_type: both
+```
+
+You can modify this file directly, and changes will be picked up on the next application start.
+
+### 2. Environment Variables
+
+If no config file exists, the application will use environment variables:
+
+```bash
+PROWLARR_URL=http://localhost:9696
+API_KEY=your-api-key
+CACHE_MAX_AGE=168  # Hours
+CACHE_MAX_SIZE=100  # MB
+CACHE_MAX_ENTRIES=100
+```
+
+These can be set in your environment or in a `.env` file.
+
+### Configuration Priority
+
+1. If `config/config.yaml` exists, use values from there
+2. If no config file exists or there's an error reading it:
+   - Use environment variables if available
+   - Fall back to default values for any missing settings
+   - Create a new config file with these values
+
+### Default Values
+
+If neither config file nor environment variables are present:
+- PROWLARR_URL: http://localhost:9696
+- API_KEY: (empty)
+- CACHE_MAX_AGE: 168 hours (7 days)
+- CACHE_MAX_SIZE: 100 MB
+- CACHE_MAX_ENTRIES: 100
+- Default protocol: both
+- Default media type: both

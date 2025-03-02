@@ -1,0 +1,10 @@
+prowlarr:
+  url: http://localhost:9696
+  api_key: your-prowlarr-api-key-here
+cache:
+  max_age: 168  # 7 days in hours
+  max_size: 100  # Size in MB
+  max_entries: 100  # Maximum number of cached searches
+search:
+  default_protocol: both
+  default_media_type: both 

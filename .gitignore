@@ -21,3 +21,7 @@ build/
 # Local development files
 *.log
 .DS_Store
+
+# Docker test files
+docker-compose.test.yml
+*.test.yml

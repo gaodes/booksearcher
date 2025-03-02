@@ -86,7 +86,7 @@
     {
       matchSourceUrlPrefixes: ["https://github.com"],
       matchUpdateTypes: ["patch", "minor", "major"],
-      matchSecurityAlerts: true,
+      matchCategories: ["security"],
       prPriority: 5,
       labels: ['security'],
       automerge: true

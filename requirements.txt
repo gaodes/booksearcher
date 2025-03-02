@@ -1,4 +1,4 @@
-aiohttp==3.9.1
+aiohttp==3.10.11
 python-dotenv==1.0.0
 pydantic==2.5.2
 psutil==5.9.6

@@ -9,21 +9,28 @@
     ':semanticCommits',
     ':enableVulnerabilityAlertsWithLabel',
   ],
-  
-  // Global settings
-  assignees: ['gaodes'],
+  assignees: [
+    'gaodes',
+  ],
   assignAutomerge: false,
-  enabledManagers: ['docker-compose', 'dockerfile', 'github-actions', 'regex'],
+  enabledManagers: [
+    'docker-compose',
+    'dockerfile',
+    'github-actions',
+    'custom.regex',
+  ],
   customManagers: [
     {
-      customType: "regex",
-      fileMatch: [".*\\.xml$"],
-      matchStrings: [
-        "\\<Repository\\>(?<depName>[^:]+):(?<currentValue>[^<]+)\\<\\/Repository\\>"
+      customType: 'regex',
+      fileMatch: [
+        '.*\\.xml$',
       ],
-      datasourceTemplate: "docker",
-      versioningTemplate: "docker"
-    }
+      matchStrings: [
+        '\\<Repository\\>(?<depName>[^:]+):(?<currentValue>[^<]+)\\<\\/Repository\\>',
+      ],
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'docker',
+    },
   ],
   timezone: 'Europe/Bucharest',
   dependencyDashboard: true,
@@ -37,62 +44,86 @@
   separateMultipleMajor: true,
   prConcurrentLimit: 0,
   prHourlyLimit: 25,
-  commitBody: "For more details, see {{sourceUrl}}", // Add source URL to commit body
+  commitBody: 'For more details, see {{sourceUrl}}',
   prBodyColumns: [
-    "Package",
-    "Type",
-    "Update",
-    "Change",
-    "References"
+    'Package',
+    'Type',
+    'Update',
+    'Change',
+    'References',
   ],
   ignorePaths: [
     '_archive/**',
   ],
   packageRules: [
-    // Github Actions
-    // Base
     {
-      matchManagers: ['github-actions'],
-      labels: ['github-actions'],
+      matchManagers: [
+        'github-actions',
+      ],
+      labels: [
+        'github-actions',
+      ],
       commitMessagePrefix: '⚙️',
       commitMessageTopic: '{{depName}}',
-      prBodyNotes: ["Action source: {{sourceUrl}}"],
-      schedule: ['at any time'],
+      prBodyNotes: [
+        'Action source: {{sourceUrl}}',
+      ],
+      schedule: [
+        'at any time',
+      ],
       automerge: true,
-      // automergeSchedule: [
-      //   'after 5:00am before 11:00am',
-      // ],
-      automergeSchedule: ['at any time'],
+      automergeSchedule: [
+        'at any time',
+      ],
       ignoreTests: true,
       platformAutomerge: true,
       recreateWhen: 'always',
-      prCreation: 'immediate'
+      prCreation: 'immediate',
     },
-    // Major updates
     {
-      matchManagers: ['github-actions'],
-      matchUpdateTypes: ['major'],
-      addLabels: ['major', 'breaking-change'],
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      addLabels: [
+        'major',
+        'breaking-change',
+      ],
       commitMessagePrefix: '💥',
       automerge: false,
       dependencyDashboardApproval: true,
     },
-    // Minor updates
     {
-      matchManagers: ['github-actions'],
-      matchUpdateTypes: ['minor'],
-      addLabels: ['github-actions', 'minor'],
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'minor',
+      ],
+      addLabels: [
+        'github-actions',
+        'minor',
+      ],
     },
-    // Patch updates
     {
-      matchManagers: ['github-actions'],
-      matchUpdateTypes: ['patch'],
-      addLabels: ['github-actions', 'patch'],
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'patch',
+      ],
+      addLabels: [
+        'github-actions',
+        'patch',
+      ],
     },
   ],
-  
   vulnerabilityAlerts: {
-      "labels": ['security'],
-      "automerge": true,
-    },
+    labels: [
+      'security',
+    ],
+    automerge: true,
+  },
 }

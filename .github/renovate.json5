@@ -1,0 +1,98 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    ':ignoreUnstable',
+    ':separateMajorReleases',
+    ':maintainLockFilesWeekly',
+    'docker:enableMajor',
+    ':semanticCommits',
+    ':enableVulnerabilityAlertsWithLabel',
+  ],
+  
+  // Global settings
+  assignees: ['gaodes'],
+  assignAutomerge: false,
+  enabledManagers: ['docker-compose', 'dockerfile', 'github-actions', 'regex'],
+  customManagers: [
+    {
+      customType: "regex",
+      fileMatch: [".*\\.xml$"],
+      matchStrings: [
+        "\\<Repository\\>(?<depName>[^:]+):(?<currentValue>[^<]+)\\<\\/Repository\\>"
+      ],
+      datasourceTemplate: "docker",
+      versioningTemplate: "docker"
+    }
+  ],
+  timezone: 'Europe/Bucharest',
+  dependencyDashboard: true,
+  automergeType: 'pr',
+  automergeStrategy: 'merge-commit',
+  rebaseWhen: 'conflicted',
+  rangeStrategy: 'pin',
+  semanticCommitType: 'chore',
+  semanticCommitScope: 'deps',
+  separateMajorMinor: true,
+  separateMultipleMajor: true,
+  prConcurrentLimit: 0,
+  prHourlyLimit: 25,
+  commitBody: "For more details, see {{sourceUrl}}", // Add source URL to commit body
+  prBodyColumns: [
+    "Package",
+    "Type",
+    "Update",
+    "Change",
+    "References"
+  ],
+  ignorePaths: [
+    '_archive/**',
+  ],
+  packageRules: [
+    // Github Actions
+    // Base
+    {
+      matchManagers: ['github-actions'],
+      labels: ['github-actions'],
+      commitMessagePrefix: '⚙️',
+      commitMessageTopic: '{{depName}}',
+      prBodyNotes: ["Action source: {{sourceUrl}}"],
+      schedule: ['at any time'],
+      automerge: true,
+      // automergeSchedule: [
+      //   'after 5:00am before 11:00am',
+      // ],
+      automergeSchedule: ['at any time'],
+      ignoreTests: true,
+      platformAutomerge: true,
+      recreateWhen: 'always',
+      prCreation: 'immediate'
+    },
+    // Major updates
+    {
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['major'],
+      addLabels: ['major', 'breaking-change'],
+      commitMessagePrefix: '💥',
+      automerge: false,
+      dependencyDashboardApproval: true,
+    },
+    // Minor updates
+    {
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['minor'],
+      addLabels: ['github-actions', 'minor'],
+    },
+    // Patch updates
+    {
+      matchManagers: ['github-actions'],
+      matchUpdateTypes: ['patch'],
+      addLabels: ['github-actions', 'patch'],
+    },
+  ],
+  
+  vulnerabilityAlerts: {
+      "labels": ['security'],
+      "automerge": true,
+    },
+}

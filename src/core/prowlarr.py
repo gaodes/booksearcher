@@ -1,9 +1,23 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 import aiohttp
 import asyncio
+from aiohttp import ClientTimeout, TCPConnector
 import json
 from datetime import datetime
+import backoff
 from core.config import settings
+
+class ProwlarrAPIError(Exception):
+    """Base exception for ProwlarrAPI errors"""
+    pass
+
+class ProwlarrConnectionError(ProwlarrAPIError):
+    """Connection-related errors"""
+    pass
+
+class ProwlarrResponseError(ProwlarrAPIError):
+    """API response errors"""
+    pass
 
 class ProwlarrAPI:
     def __init__(self, base_url: str, api_key: str, debug: bool = False):
@@ -11,11 +25,11 @@ class ProwlarrAPI:
         self.api_key = api_key
         self.headers = {
             "X-Api-Key": api_key,
-            "Accept": "application/json"
+            "Accept": "application/json",
+            "User-Agent": "BookSearcher/1.0"
         }
         self.debug = debug
-        self.request_count = 0
-        self.last_error = None
+        self.session: Optional[aiohttp.ClientSession] = None
         self.api_stats = {
             'requests': 0,
             'errors': 0,
@@ -24,68 +38,123 @@ class ProwlarrAPI:
             'last_request': None,
             'requests_by_endpoint': {}
         }
+        self.last_error: Optional[Dict[str, Any]] = None
 
-    async def _make_request(self, method: str, endpoint: str, params: Dict = None, json_data: Dict = None) -> Dict:
-        """Enhanced request handling with detailed stats"""
-        self.api_stats['requests'] += 1
-        endpoint_key = f"{method} {endpoint}"
-        self.api_stats['requests_by_endpoint'][endpoint_key] = self.api_stats['requests_by_endpoint'].get(endpoint_key, 0) + 1
-        
-        start_time = datetime.now()
-        
+    async def __aenter__(self) -> 'ProwlarrAPI':
+        """Async context manager entry"""
+        await self.create_session()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit"""
+        await self.close_session()
+
+    async def create_session(self) -> None:
+        """Create a new aiohttp session with connection pooling"""
+        if self.session is None or self.session.closed:
+            timeout = ClientTimeout(total=30, connect=10)
+            connector = TCPConnector(
+                limit=10,  # Maximum number of concurrent connections
+                ttl_dns_cache=300,  # DNS cache TTL in seconds
+                enable_cleanup_closed=True
+            )
+            self.session = aiohttp.ClientSession(
+                headers=self.headers,
+                timeout=timeout,
+                connector=connector
+            )
+
+    async def close_session(self) -> None:
+        """Close the aiohttp session"""
+        if self.session and not self.session.closed:
+            await self.session.close()
+
+    def _log_request(self, method: str, endpoint: str, params: Optional[Dict] = None, json_data: Optional[Dict] = None) -> None:
+        """Log request details when in debug mode"""
         if self.debug:
             print(f"\n🔌 API Request #{self.api_stats['requests']}")
             print(f"  Method:     {method}")
             print(f"  Endpoint:   {endpoint}")
             print(f"  User-Agent: {self.headers.get('User-Agent', 'Not set')}")
-            print(f"  Rate Limit: {self.headers.get('X-Rate-Limit', 'Not set')}")
-            print(f"  Params:   {params}")
+            print(f"  Params:     {params}")
             if json_data:
-                print(f"  Payload:  {json.dumps(json_data, indent=2)}")
+                print(f"  Payload:    {json.dumps(json_data, indent=2)}")
+
+    def _log_response(self, response: aiohttp.ClientResponse, duration: float, data: Any) -> None:
+        """Log response details when in debug mode"""
+        if self.debug:
+            print(f"\n📡 Response Info:")
+            print(f"  Status:     {response.status} {response.reason}")
+            print(f"  Duration:   {duration:.2f}s")
+            print(f"  Headers:    {dict(response.headers)}")
+            
+            if isinstance(data, (dict, list)):
+                print("\n📊 Response Summary:")
+                if isinstance(data, list):
+                    print(f"  Items:      {len(data)}")
+                    if data:
+                        print("  First item: ")
+                        print(json.dumps(data[0], indent=2)[:200] + "...")
+                else:
+                    print("  Keys:       " + ", ".join(data.keys()))
+
+    @backoff.on_exception(
+        backoff.expo,
+        (aiohttp.ClientError, asyncio.TimeoutError),
+        max_tries=3,
+        max_time=30
+    )
+    async def _make_request(self, method: str, endpoint: str, params: Optional[Dict] = None, json_data: Optional[Dict] = None) -> Dict:
+        """Enhanced request handling with retries and connection pooling"""
+        self.api_stats['requests'] += 1
+        endpoint_key = f"{method} {endpoint}"
+        self.api_stats['requests_by_endpoint'][endpoint_key] = self.api_stats['requests_by_endpoint'].get(endpoint_key, 0) + 1
+        
+        start_time = datetime.now()
+        self._log_request(method, endpoint, params, json_data)
 
         try:
-            async with aiohttp.ClientSession(headers=self.headers) as session:
-                async with session.request(method, f"{self.base_url}{endpoint}", 
-                                         params=params, json=json_data) as response:
-                    duration = (datetime.now() - start_time).total_seconds()
-                    self.api_stats['total_time'] += duration
-                    self.api_stats['avg_response_time'] = self.api_stats['total_time'] / self.api_stats['requests']
-                    self.api_stats['last_request'] = {
-                        'timestamp': datetime.now().isoformat(),
-                        'duration': duration,
-                        'endpoint': endpoint,
-                        'status': response.status
-                    }
-                    
-                    if self.debug:
-                        print(f"\n📡 Response Info:")
-                        print(f"  Status:     {response.status} {response.reason}")
-                        print(f"  Duration:   {duration:.2f}s")
-                        print(f"  Headers:    {dict(response.headers)}")
+            await self.create_session()
+            async with self.session.request(
+                method, 
+                f"{self.base_url}{endpoint}",
+                params=params,
+                json=json_data
+            ) as response:
+                duration = (datetime.now() - start_time).total_seconds()
+                self.api_stats['total_time'] += duration
+                self.api_stats['avg_response_time'] = self.api_stats['total_time'] / self.api_stats['requests']
+                self.api_stats['last_request'] = {
+                    'timestamp': datetime.now().isoformat(),
+                    'duration': duration,
+                    'endpoint': endpoint,
+                    'status': response.status
+                }
 
+                try:
                     data = await response.json()
-                    
-                    if self.debug and isinstance(data, (dict, list)):
-                        print("\n📊 Response Summary:")
-                        if isinstance(data, list):
-                            print(f"  Items:      {len(data)}")
-                            if data:
-                                print("  First item: ")
-                                print(json.dumps(data[0], indent=2)[:200] + "...")
-                        else:
-                            print("  Keys:       " + ", ".join(data.keys()))
+                except aiohttp.ContentTypeError:
+                    data = await response.text()
+                    raise ProwlarrResponseError(f"Invalid JSON response: {data[:200]}")
 
-                    if response.status >= 400:
-                        error_msg = f"API Error: {response.status} - {data.get('error', 'Unknown error')}"
-                        self.last_error = {
-                            'timestamp': datetime.now().isoformat(),
-                            'status': response.status,
-                            'message': error_msg,
-                            'response': data
-                        }
-                        raise aiohttp.ClientError(error_msg)
+                self._log_response(response, duration, data)
 
-                    return data
+                if response.status >= 400:
+                    error_msg = f"API Error: {response.status} - {data.get('error', 'Unknown error')}"
+                    self.last_error = {
+                        'timestamp': datetime.now().isoformat(),
+                        'status': response.status,
+                        'message': error_msg,
+                        'response': data
+                    }
+                    if response.status == 429:
+                        raise ProwlarrAPIError("Rate limit exceeded")
+                    elif response.status >= 500:
+                        raise ProwlarrAPIError("Server error")
+                    else:
+                        raise ProwlarrResponseError(error_msg)
+
+                return data
 
         except aiohttp.ClientError as e:
             self.api_stats['errors'] += 1
@@ -94,7 +163,7 @@ class ProwlarrAPI:
                 'error_type': type(e).__name__,
                 'message': str(e)
             }
-            raise
+            raise ProwlarrConnectionError(f"Connection error: {str(e)}")
         except Exception as e:
             self.api_stats['errors'] += 1
             self.last_error = {
@@ -102,7 +171,7 @@ class ProwlarrAPI:
                 'error_type': type(e).__name__,
                 'message': str(e)
             }
-            raise
+            raise ProwlarrAPIError(f"Unexpected error: {str(e)}")
 
     async def get_tag_ids(self) -> Dict[str, int]:
         """Get audiobooks and ebooks tag IDs"""

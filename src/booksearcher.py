@@ -6,10 +6,32 @@ import time
 import json
 import os
 import threading
+import aiohttp
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any, TypedDict
 from core.config import settings
 from core.prowlarr import ProwlarrAPI
+
+class SearchError(Exception):
+    """Base exception for search related errors"""
+    pass
+
+class CacheError(Exception):
+    """Base exception for cache related errors"""
+    pass
+
+class PerformanceStats(TypedDict):
+    start_time: Optional[datetime]
+    total_searches: int
+    total_grabs: int
+    cache_hits: int
+    cache_misses: int
+
+class LastError(TypedDict):
+    timestamp: str
+    context: str
+    type: str
+    message: str
 
 class Spinner:
     def __init__(self):
@@ -40,40 +62,68 @@ class Spinner:
         self.write('\r')
 
 class BookSearcher:
-    def __init__(self):
-        self.cache_dir = os.path.join(os.path.dirname(__file__), 'cache')
-        self.prowlarr = ProwlarrAPI(settings["PROWLARR_URL"], settings["API_KEY"])
-        self.spinner = Spinner()  # Always initialize spinner
-        self.debug = False
-        self.last_error = None
-        self.debug_log = []
-        self.performance_stats = {
+    # Maximum cache size in bytes (default: 100MB)
+    MAX_CACHE_SIZE = 100 * 1024 * 1024
+    # Maximum number of cached searches
+    MAX_CACHED_SEARCHES = 100
+    
+    def __init__(self) -> None:
+        """Initialize the BookSearcher with necessary components and settings."""
+        self.cache_dir: str = os.path.join(os.path.dirname(__file__), 'cache')
+        self.prowlarr: ProwlarrAPI = ProwlarrAPI(settings["PROWLARR_URL"], settings["API_KEY"])
+        self.spinner: Spinner = Spinner()
+        self.debug: bool = False
+        self.last_error: Optional[LastError] = None
+        self.debug_log: List[Dict[str, Any]] = []
+        self.performance_stats: PerformanceStats = {
             'start_time': None,
             'total_searches': 0,
             'total_grabs': 0,
             'cache_hits': 0,
             'cache_misses': 0
         }
-        self.current_search = None
-        self.current_kind = None
-        self.current_protocol = None
-        os.makedirs(self.cache_dir, exist_ok=True)
+        self.current_search: Optional[str] = None
+        self.current_kind: Optional[str] = None
+        self.current_protocol: Optional[str] = None
+        
+        try:
+            os.makedirs(self.cache_dir, exist_ok=True)
+            # Run initial cache cleanup
+            self._cleanup_cache()
+        except OSError as e:
+            raise CacheError(f"Failed to create cache directory: {str(e)}")
 
-    async def handle_error(self, error: Exception, context: str = ""):
-        """Centralized error handling"""
+    async def handle_error(self, error: Exception, context: str = "") -> None:
+        """
+        Centralized error handling with improved error categorization and logging.
+        
+        Args:
+            error: The exception that occurred
+            context: Additional context about where the error occurred
+        """
         self.spinner.stop()
+        
+        error_category = "Unknown"
+        if isinstance(error, SearchError):
+            error_category = "Search"
+        elif isinstance(error, CacheError):
+            error_category = "Cache"
+        elif isinstance(error, aiohttp.ClientError):
+            error_category = "Network"
+        
         self.last_error = {
             'timestamp': datetime.now().isoformat(),
             'context': context,
-            'type': type(error).__name__,
+            'type': f"{error_category}: {type(error).__name__}",
             'message': str(error)
         }
 
-        print(f"\n❌ Error: {str(error)}")
+        print(f"\n❌ {error_category} Error: {str(error)}")
         
         if self.debug:
             import traceback
-            print("\n🔍 Debug Information:")
+            print("\n🔧 Debug Information:")
+            print(f"  Category: {error_category}")
             print(f"  Context:  {context}")
             print(f"  Type:     {type(error).__name__}")
             print(f"  Location: {error.__traceback__.tb_frame.f_code.co_filename}:{error.__traceback__.tb_lineno}")
@@ -117,8 +167,21 @@ class BookSearcher:
         args = parser.parse_args()
         self.debug = args.debug
 
-        # Get tags silently first since we need them for searches
-        self.tags = await self.prowlarr.get_tag_ids()
+        try:
+            # Get tags silently first since we need them for searches
+            self.tags = await self.prowlarr.get_tag_ids()
+        except Exception as e:
+            await self.handle_error(e, "Failed to get tag IDs")
+            return
+
+        if self.debug:
+            print("\n🔧 Debug Mode Enabled")
+            print("──────────────────────")
+            print(f"📂 Cache Dir: {self.cache_dir}")
+            print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
+            print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}s")
+            print(f"🏷️  Tags: {self.tags}")
+            print("──────────────────────\n")
 
         # If only search term provided (no flags), set defaults for interactive search
         if args.search_term and not any([
@@ -230,49 +293,111 @@ class BookSearcher:
                            if f.startswith('search_')]
         return max(existing_searches, default=0) + 1
 
+    def _get_cache_size(self) -> int:
+        """
+        Calculate the total size of the cache directory in bytes.
+        
+        Returns:
+            int: Total size of cache in bytes
+        """
+        total_size = 0
+        for dirpath, _, filenames in os.walk(self.cache_dir):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                total_size += os.path.getsize(fp)
+        return total_size
+
+    def _get_cache_entries(self) -> List[tuple[int, str, float]]:
+        """
+        Get all cache entries sorted by access time.
+        
+        Returns:
+            List of tuples containing (search_id, path, last_access_time)
+        """
+        entries = []
+        for entry in os.listdir(self.cache_dir):
+            if entry.startswith('search_'):
+                try:
+                    search_id = int(entry.split('_')[1])
+                    path = os.path.join(self.cache_dir, entry)
+                    # Use the most recent access time of any file in the search directory
+                    max_atime = max(
+                        os.path.getatime(os.path.join(root, f))
+                        for root, _, files in os.walk(path)
+                        for f in files
+                    )
+                    entries.append((search_id, path, max_atime))
+                except (ValueError, OSError):
+                    continue
+        return sorted(entries, key=lambda x: x[2])  # Sort by access time
+
+    def _cleanup_cache(self) -> None:
+        """
+        Clean up the cache directory based on size and entry limits.
+        Removes oldest accessed entries first when limits are exceeded.
+        """
+        try:
+            # Check if we're over the entry limit
+            entries = self._get_cache_entries()
+            while len(entries) > self.MAX_CACHED_SEARCHES:
+                search_id, path, _ = entries.pop(0)  # Remove oldest
+                self._remove_cache_entry(path)
+                if self.debug:
+                    self._log_debug(f"Removed cache entry {search_id} due to entry limit")
+
+            # Check if we're over the size limit
+            while self._get_cache_size() > self.MAX_CACHE_SIZE and entries:
+                search_id, path, _ = entries.pop(0)  # Remove oldest
+                self._remove_cache_entry(path)
+                if self.debug:
+                    self._log_debug(f"Removed cache entry {search_id} due to size limit")
+
+        except Exception as e:
+            if self.debug:
+                self._log_debug(f"Cache cleanup error: {str(e)}", "cleanup")
+
+    def _remove_cache_entry(self, path: str) -> None:
+        """
+        Safely remove a cache entry directory.
+        
+        Args:
+            path: Path to the cache entry directory
+        """
+        try:
+            import shutil
+            shutil.rmtree(path)
+        except Exception as e:
+            if self.debug:
+                self._log_debug(f"Failed to remove cache entry {path}: {str(e)}", "cleanup")
+
     def save_search_results(self, search_id: int, results: List[Dict], 
-                          search_term: str, kind: str, protocol: Optional[str], mode: str):
+                          search_term: str, kind: str, protocol: Optional[str], mode: str) -> None:
         """Save search results to cache"""
         search_dir = os.path.join(self.cache_dir, f'search_{search_id}')
-        os.makedirs(search_dir, exist_ok=True)
-
-        # Save results
-        with open(os.path.join(search_dir, 'results.json'), 'w') as f:
-            json.dump(results, f)
-
-        # Save metadata
-        meta = {
-            'timestamp': datetime.now().isoformat(),
-            'search_term': search_term,
-            'kind': kind,
-            'protocol': protocol,
-            'mode': mode
-        }
-        with open(os.path.join(search_dir, 'meta.json'), 'w') as f:
-            json.dump(meta, f)
-
-    def cleanup_cache(self):
-        """Remove cache entries older than CACHE_MAX_AGE"""
-        max_age = timedelta(seconds=settings['CACHE_MAX_AGE'])
-        now = datetime.now()
         
-        for entry in os.listdir(self.cache_dir):
-            if not entry.startswith('search_'):
-                continue
-                
-            path = os.path.join(self.cache_dir, entry)
-            meta_file = os.path.join(path, 'meta.json')
+        try:
+            os.makedirs(search_dir, exist_ok=True)
+
+            # Save results
+            with open(os.path.join(search_dir, 'results.json'), 'w') as f:
+                json.dump(results, f)
+
+            # Save metadata
+            meta = {
+                'timestamp': datetime.now().isoformat(),
+                'search_term': search_term,
+                'kind': kind,
+                'protocol': protocol,
+                'mode': mode
+            }
+            with open(os.path.join(search_dir, 'meta.json'), 'w') as f:
+                json.dump(meta, f)
+
+            # Run cleanup after saving new results
+            self._cleanup_cache()
             
-            try:
-                with open(meta_file) as f:
-                    meta = json.load(f)
-                timestamp = datetime.fromisoformat(meta['timestamp'])
-                
-                if now - timestamp > max_age:
-                    import shutil
-                    shutil.rmtree(path)
-            except (json.JSONDecodeError, KeyError, ValueError, FileNotFoundError):
-                continue
+        except OSError as e:
+            raise CacheError(f"Failed to save search results: {str(e)}")
 
     async def handle_search(self, args):
         """Handle search operation"""
@@ -288,6 +413,12 @@ class BookSearcher:
                     self.tags['audiobooks'],
                     self.tags['ebooks']
                 ]
+
+                if self.debug:
+                    print(f"\n🔍 Executing search with:")
+                    print(f"  Term: {self.current_search}")
+                    print(f"  Tags: {tag_ids}")
+                    print(f"  Protocol: {self.current_protocol}")
 
                 # Show searching animation
                 self.spinner.start()
@@ -312,9 +443,8 @@ class BookSearcher:
                 await self.display_results(results, search_id, True)
                 return
 
-            # Rest of the existing search handling code
+            # If no arguments provided, go into interactive mode
             if not args.search_term and not args.search and not args.grab:
-                # If no arguments provided, go into interactive mode
                 # Get media type from menu
                 tag_ids, kind, icon = self.show_media_type_menu()
                 
@@ -367,7 +497,6 @@ class BookSearcher:
                 return
 
             # Handle normal search with arguments
-            # Initialize spinner
             search_term = ' '.join(args.search_term)
 
             try:
@@ -378,9 +507,9 @@ class BookSearcher:
 
                 # Get tag IDs based on kind argument
                 tag_ids = []
-                if args.kind in ('audio', 'both'):
+                if not args.kind or args.kind in ('audio', 'both'):
                     tag_ids.append(self.tags['audiobooks'])
-                if args.kind in ('book', 'both'):
+                if not args.kind or args.kind in ('book', 'both'):
                     tag_ids.append(self.tags['ebooks'])
 
                 # Convert protocol
@@ -391,7 +520,7 @@ class BookSearcher:
                 # Perform search
                 if search_term:
                     if self.debug:
-                        print(f"🔍 Executing search with:")
+                        print(f"\n🔍 Executing search with:")
                         print(f"  Term: {search_term}")
                         print(f"  Tags: {tag_ids}")
                         print(f"  Protocol: {protocol}")

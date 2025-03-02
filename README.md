@@ -6,10 +6,13 @@ BookSearcher is a Python-based CLI tool that interfaces with Prowlarr to search 
 
 - 🔍 Powerful search across multiple indexers via Prowlarr
 - 📚 Support for both eBooks and Audiobooks
-- 💾 Smart caching system for quick result retrieval
+- 💾 Smart caching system with size limits and auto-cleanup
+- 🌐 Robust network handling with connection pooling and retries
 - 🎯 Interactive and headless mode for easily using it remotely
 - 🐳 Docker containerization for easy deployment
 - 📡 Support for both Usenet and Torrent protocols
+- 🐞 Enhanced error handling and debugging capabilities
+- 📊 Detailed performance monitoring and statistics
 
 ## 🛠️ Requirements
 
@@ -191,11 +194,41 @@ Available commands and flags for `bs` (booksearcher):
     - Inside container: `/app/src/cache`
     - Host machine: `./cache` (when using volume mount)
 - ⏱️ Default cache duration: 7 days
-- 🧹 Auto-cleanup of old cache entries
-- 📊 Cache statistics in debug mode
+- 🧹 Intelligent cache management:
+    - Size-based limits (100MB by default)
+    - Entry count limits (100 entries by default)
+    - Auto-cleanup based on access time
+    - Automatic removal of oldest entries when limits are exceeded
+- 📊 Comprehensive cache statistics in debug mode
 - 💿 Persistent across container restarts when using volume mount
 
-> 💡 **Tip**: Mount the cache directory as a volume to preserve your search history across container restarts
+## 🔧 Advanced Features
+
+### Network Optimization
+
+- 🔄 Automatic retry mechanism with exponential backoff
+- 🌐 Connection pooling for better performance
+- ⏱️ Configurable timeouts and DNS caching
+- 🛡️ Proper session management and cleanup
+
+### Debug & Monitoring
+
+- 📊 Detailed performance statistics:
+    - Request counts and timing
+    - Cache hit/miss ratios
+    - Resource usage monitoring
+    - API endpoint statistics
+- 🔍 Enhanced error tracking:
+    - Error categorization (Network, Cache, Search)
+    - Detailed error context and stack traces
+    - API response debugging
+    - Request/response logging
+
+### Type Safety
+
+- 📝 Comprehensive type hints for better code reliability
+- 🏷️ TypedDict definitions for structured data
+- ✅ Improved IDE support and code completion
 
 ## 🐛 Troubleshooting
 

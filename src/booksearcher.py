@@ -65,27 +65,43 @@ class Spinner:
         self.busy = False
         self.delay = 0.1
         self.thread = None
+        self._lock = threading.Lock()  # Add thread safety
 
     def write(self, message):
-        sys.stdout.write(message)
-        sys.stdout.flush()
+        """Thread-safe write to stdout"""
+        with self._lock:
+            sys.stdout.write(message)
+            sys.stdout.flush()
 
     def spin(self):
-        while self.busy:
-            for char in self.spinner:
-                self.write(f'\rSearching {char}')
-                time.sleep(self.delay)
+        """Main spinner loop with cleanup handling"""
+        try:
+            while self.busy:
+                for char in self.spinner:
+                    if not self.busy:
+                        break
+                    self.write(f'\rSearching {char}')
+                    time.sleep(self.delay)
+        finally:
+            # Ensure we clear the line when done
+            self.write('\r' + ' ' * 20 + '\r')
 
     def start(self):
+        """Start the spinner thread safely"""
+        if self.thread and self.thread.is_alive():
+            return  # Don't start if already running
+        
         self.busy = True
         self.thread = threading.Thread(target=self.spin)
+        self.thread.daemon = True  # Make thread daemon so it exits with main program
         self.thread.start()
 
     def stop(self):
+        """Stop the spinner thread safely"""
         self.busy = False
-        if self.thread:
+        if self.thread and self.thread.is_alive():
             self.thread.join()
-        self.write('\r')
+        self.thread = None
 
 class BookSearcher:
     # Maximum cache size in bytes (default: 100MB)
@@ -306,26 +322,11 @@ class BookSearcher:
             
             self.debug = args.debug
             
-            if self.debug:
-                print("\n🔧 Debug Mode Enabled")
-                print("──────────────────────")
-                print(f"📂 Cache Dir: {self.cache_dir}")
-                print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
-                print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}h")
-                print(f"🌐 Pool Size: {self.POOL_SIZE}")
-                print("──────────────────────\n")
-            
             # Get tags silently first since we need them for searches
             self.tags = await self.prowlarr.get_tag_ids()
 
             if self.debug:
-                print("\n🔧 Debug Mode Enabled")
-                print("──────────────────────")
-                print(f"📂 Cache Dir: {self.cache_dir}")
-                print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
-                print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}s")
-                print(f"🏷️  Tags: {self.tags}")
-                print("──────────────────────\n")
+                self._display_debug_info()
 
             # If only search term provided (no flags), set defaults for interactive search
             if args.search_term and not any([
@@ -455,16 +456,32 @@ class BookSearcher:
     def _get_cache_entries(self) -> List[tuple[int, str, float]]:
         """
         Get all cache entries sorted by access time.
+        Handles corrupted entries gracefully.
         
         Returns:
             List of tuples containing (search_id, path, last_access_time)
         """
         entries = []
-        for entry in os.listdir(self.cache_dir):
-            if entry.startswith('search_'):
+        corrupted = []
+        
+        try:
+            for entry in os.listdir(self.cache_dir):
+                if not entry.startswith('search_'):
+                    continue
+
                 try:
                     search_id = int(entry.split('_')[1])
                     path = os.path.join(self.cache_dir, entry)
+                    
+                    if not os.path.isdir(path):
+                        corrupted.append(path)
+                        continue
+                        
+                    # Verify cache entry integrity
+                    if not self._verify_cache_entry(path):
+                        corrupted.append(path)
+                        continue
+                    
                     # Use the most recent access time of any file in the search directory
                     max_atime = max(
                         os.path.getatime(os.path.join(root, f))
@@ -472,9 +489,80 @@ class BookSearcher:
                         for f in files
                     )
                     entries.append((search_id, path, max_atime))
-                except (ValueError, OSError):
+                except (ValueError, OSError) as e:
+                    if self.debug:
+                        self._log_debug(f"Error processing cache entry {entry}: {str(e)}", "cache")
+                    corrupted.append(os.path.join(self.cache_dir, entry))
                     continue
+            
+            # Clean up corrupted entries
+            if corrupted:
+                self._cleanup_corrupted_entries(corrupted)
+                
+        except OSError as e:
+            if self.debug:
+                self._log_debug(f"Error accessing cache directory: {str(e)}", "cache")
+            return []
+            
         return sorted(entries, key=lambda x: x[2])  # Sort by access time
+
+    def _verify_cache_entry(self, path: str) -> bool:
+        """
+        Verify the integrity of a cache entry.
+        
+        Args:
+            path: Path to the cache entry directory
+            
+        Returns:
+            bool: True if entry is valid, False otherwise
+        """
+        try:
+            results_file = os.path.join(path, 'results.json')
+            meta_file = os.path.join(path, 'meta.json')
+            
+            if not (os.path.exists(results_file) and os.path.exists(meta_file)):
+                return False
+                
+            # Verify JSON files are valid
+            with open(results_file) as f:
+                results = json.load(f)
+            with open(meta_file) as f:
+                meta = json.load(f)
+                
+            # Verify required fields
+            required_meta = {'timestamp', 'search_term', 'kind', 'mode'}
+            if not all(field in meta for field in required_meta):
+                return False
+                
+            # Verify results is a list
+            if not isinstance(results, list):
+                return False
+                
+            return True
+            
+        except (OSError, json.JSONDecodeError):
+            return False
+
+    def _cleanup_corrupted_entries(self, corrupted: List[str]) -> None:
+        """
+        Clean up corrupted cache entries.
+        
+        Args:
+            corrupted: List of paths to corrupted entries
+        """
+        for path in corrupted:
+            try:
+                if os.path.exists(path):
+                    if os.path.isdir(path):
+                        import shutil
+                        shutil.rmtree(path)
+                    else:
+                        os.remove(path)
+                    if self.debug:
+                        self._log_debug(f"Removed corrupted cache entry: {path}", "cache")
+            except OSError as e:
+                if self.debug:
+                    self._log_debug(f"Failed to remove corrupted entry {path}: {str(e)}", "cache")
 
     def _update_cache_stats(self) -> None:
         """Update cache statistics"""
@@ -1153,6 +1241,17 @@ class BookSearcher:
                 continue
 
         return searches
+
+    def _display_debug_info(self) -> None:
+        """Display debug information in a unified format"""
+        print("\n🔧 Debug Mode Enabled")
+        print("──────────────────────")
+        print(f"📂 Cache Dir: {self.cache_dir}")
+        print(f"🔌 Prowlarr URL: {settings['PROWLARR_URL']}")
+        print(f"⚙️  Cache Max Age: {settings['CACHE_MAX_AGE']}h")
+        print(f"🌐 Pool Size: {self.POOL_SIZE}")
+        print(f"🏷️  Tags: {self.tags}")
+        print("──────────────────────\n")
 
 async def main():
     searcher = BookSearcher()

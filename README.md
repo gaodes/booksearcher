@@ -48,7 +48,9 @@ docker run -d \
   -v "$(pwd)/cache:/app/src/cache" \
   -e PROWLARR_URL=https://prowlarr.your.domain \
   -e API_KEY='YOUR PROWLARR API KEY' \
-  -e CACHE_MAX_AGE=604800 \
+  -e CACHE_MAX_AGE=168 \
+  -e CACHE_MAX_SIZE=100 \
+  -e CACHE_MAX_ENTRIES=100 \
   gaodes/booksearcher:latest
 ```
 
@@ -64,7 +66,9 @@ services:
     environment:
       PROWLARR_URL: 'https://prowlarr.your.domain # or ip'
       API_KEY: 'YOUR PROWLARR API KEY'
-      CACHE_MAX_AGE: 604800
+      CACHE_MAX_AGE: 168  # 7 days in hours
+      CACHE_MAX_SIZE: 100  # Size in MB
+      CACHE_MAX_ENTRIES: 100  # Maximum number of cached searches
     volumes:
       - ./cache:/app/src/cache
 ```
@@ -193,13 +197,20 @@ Available commands and flags for `bs` (booksearcher):
 - 📂 Cache location:
     - Inside container: `/app/src/cache`
     - Host machine: `./cache` (when using volume mount)
-- ⏱️ Default cache duration: 7 days
+- 🔧 Configurable cache settings:
+    - `CACHE_MAX_AGE`: Maximum age of cache entries in hours (default: 168 - 7 days)
+    - `CACHE_MAX_SIZE`: Maximum cache size in MB (default: 100)
+    - `CACHE_MAX_ENTRIES`: Maximum number of cached searches (default: 100)
 - 🧹 Intelligent cache management:
-    - Size-based limits (100MB by default)
-    - Entry count limits (100 entries by default)
+    - Size-based limits (configurable in MB)
+    - Entry count limits (configurable)
     - Auto-cleanup based on access time
     - Automatic removal of oldest entries when limits are exceeded
-- 📊 Comprehensive cache statistics in debug mode
+- 📊 Comprehensive cache statistics in debug mode:
+    - Current cache size and limits
+    - Entry counts
+    - Hit/miss ratios
+    - Age information
 - 💿 Persistent across container restarts when using volume mount
 
 ## 🔧 Advanced Features

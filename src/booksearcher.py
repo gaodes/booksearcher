@@ -339,14 +339,14 @@ class BookSearcher:
         try:
             # Check if we're over the entry limit
             entries = self._get_cache_entries()
-            while len(entries) > self.MAX_CACHED_SEARCHES:
+            while len(entries) > settings["CACHE_MAX_ENTRIES"]:
                 search_id, path, _ = entries.pop(0)  # Remove oldest
                 self._remove_cache_entry(path)
                 if self.debug:
                     self._log_debug(f"Removed cache entry {search_id} due to entry limit")
 
             # Check if we're over the size limit
-            while self._get_cache_size() > self.MAX_CACHE_SIZE and entries:
+            while self._get_cache_size() > settings["CACHE_MAX_SIZE"] and entries:
                 search_id, path, _ = entries.pop(0)  # Remove oldest
                 self._remove_cache_entry(path)
                 if self.debug:
@@ -581,9 +581,15 @@ class BookSearcher:
                 result = results[result_num - 1]
                 await self.prowlarr.grab_release(result['guid'], result['indexerId'])
                 
-                print("\n✨ Successfully sent to download client!")
-                print(f"📥 Title:")
-                print(f"    {result['title']}")
+                protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
+                kind_icon = "🎧" if "audiobooks" in result.get('categories', []) else "📚"
+                
+                print("✨ Successfully sent to download client! ✨")
+                print("═" * 60)
+                print(f"📥 Title:          {result['title']}")
+                print(f"📚 Kind:          {kind_icon} {'Audiobook' if kind_icon == '🎧' else 'eBook'}")
+                print(f"🔌 Protocol:      {protocol_icon} {result.get('protocol', 'N/A')}")
+                print(f"🔍 Indexer:       {result.get('indexer', 'N/A')}")
                 
             except FileNotFoundError:
                 print(f"Error: Search #{search_id} not found")
@@ -847,10 +853,14 @@ class BookSearcher:
         print(f"  Total grabs:      {self.performance_stats['total_grabs']}")
         
         # Cache stats
+        cache_size = self._get_cache_size()
         print(f"\n💾 Cache Statistics:")
         print(f"  Cache hits:       {self.performance_stats['cache_hits']}")
         print(f"  Cache misses:     {self.performance_stats['cache_misses']}")
         print(f"  Hit ratio:        {self._calculate_cache_ratio():.1f}%")
+        print(f"  Current size:     {cache_size/1024/1024:.1f}MB / {settings['CACHE_MAX_SIZE']/1024/1024:.1f}MB")
+        print(f"  Entry count:      {len(self._get_cache_entries())} / {settings['CACHE_MAX_ENTRIES']}")
+        print(f"  Max age:         {settings['CACHE_MAX_AGE']/3600:.1f} hours")
         
         # API stats
         print(f"\n🌐 API Statistics:")

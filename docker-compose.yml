@@ -7,5 +7,7 @@ services:
       - TZ=Europe/Bucharest
       - PROWLARR_URL=http://your-prowlarr-url:9696
       - API_KEY=your-prowlarr-api-key
-      - CACHE_MAX_AGE=604800
+      - CACHE_MAX_AGE=168  # 7 days in hours
+      - CACHE_MAX_SIZE=100  # Size in MB
+      - CACHE_MAX_ENTRIES=100  # Maximum number of cached searches
     restart: unless-stopped

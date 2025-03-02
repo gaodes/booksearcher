@@ -67,6 +67,10 @@ class BookSearcher:
     # Maximum number of cached searches
     MAX_CACHED_SEARCHES = 100
     
+    # Add these constants at the top of the BookSearcher class
+    SEPARATOR_THIN = "─" * 80
+    SEPARATOR_THICK = "═" * 80
+    
     def __init__(self) -> None:
         """Initialize the BookSearcher with necessary components and settings."""
         self.cache_dir: str = os.path.join(os.path.dirname(__file__), 'cache')
@@ -134,32 +138,61 @@ class BookSearcher:
                 print("\n🌐 Last API Error:")
                 print(json.dumps(self.prowlarr.last_error, indent=2))
 
-    def show_media_type_menu(self) -> tuple[List[int], str, str]:
-        """Interactive media type selection"""
+    def _display_header(self, title: str) -> None:
+        """Display a consistent header with title"""
+        print(f"\n{title}")
+        print(self.SEPARATOR_THICK)
+
+    def _display_section(self, title: str) -> None:
+        """Display a consistent section header"""
+        print(f"\n{title}")
+        print(self.SEPARATOR_THIN)
+
+    def _prompt_user(self, prompt: str, choices: List[str] = None, allow_empty: bool = False) -> str:
+        """Unified method for user prompts"""
         while True:
-            print("\n📚 Welcome to BookSearcher! 📚")
-            print("───────────────────────────")
-            print("Choose what type of books you're looking for:")
-            print("\n1) 🎧 Audiobooks")
-            print("   Perfect for listening while commuting or doing other activities")
-            print("\n2) 📚 eBooks")
-            print("   Digital books for your e-reader or tablet")
-            print("\n3) 🎧+📚 Both Formats")
-            print("   Search for both audiobooks and ebooks simultaneously")
-            print("\nq) ❌ Quit")
+            user_input = input(f"\n{prompt} > ").strip()
             
-            choice = input("\n✨ Your choice > ").strip().lower()
-            
-            if choice == 'q':
+            if user_input.lower() == 'q':
                 sys.exit(0)
-            elif choice == '1':
-                return [self.tags['audiobooks']], "Audiobooks", "🎧"
-            elif choice == '2':
-                return [self.tags['ebooks']], "eBook", "📚"
-            elif choice == '3':
-                return [self.tags['audiobooks'], self.tags['ebooks']], "Audiobooks & eBooks", "🎧+📚"
-            else:
-                print("\n❌ Please choose 1, 2, 3, or q to quit")
+            
+            if not user_input and not allow_empty:
+                print("\n❌ Input cannot be empty. Please try again or type 'q' to quit.")
+                continue
+                
+            if choices and user_input not in choices:
+                print(f"\n❌ Please choose from: {', '.join(choices)}")
+                continue
+                
+            return user_input
+
+    def _display_instructions(self, command: str, description: str) -> None:
+        """Display unified command instructions"""
+        print(f"\n📝 {description}:")
+        print(f"bs {command}")
+
+    def show_media_type_menu(self) -> tuple[List[int], str, str]:
+        """Interactive media type selection with unified formatting"""
+        self._display_header("📚 Welcome to BookSearcher! 📚")
+        
+        print("\nChoose what type of books you're looking for:")
+        print("\n1) 🎧 Audiobooks")
+        print("   Perfect for listening while commuting or doing other activities")
+        print("\n2) 📚 eBooks")
+        print("   Digital books for your e-reader or tablet")
+        print("\n3) 🎧+📚 Both Formats")
+        print("   Search for both audiobooks and ebooks simultaneously")
+        print("\n❌ Type 'q' to quit")
+        
+        choice = self._prompt_user("✨ Your choice", ['1', '2', '3'])
+        
+        choices = {
+            '1': ([self.tags['audiobooks']], "Audiobooks", "🎧"),
+            '2': ([self.tags['ebooks']], "eBook", "📚"),
+            '3': ([self.tags['audiobooks'], self.tags['ebooks']], "Audiobooks & eBooks", "🎧+📚")
+        }
+        
+        return choices[choice]
 
     async def run(self):
         self.performance_stats['start_time'] = datetime.now()
@@ -400,77 +433,151 @@ class BookSearcher:
             raise CacheError(f"Failed to save search results: {str(e)}")
 
     async def handle_search(self, args):
-        """Handle search operation"""
+        """Handle search operation with unified interaction"""
         try:
-            # Store current search parameters for headless mode
+            # Handle headless mode
             if args.headless and args.search_term:
-                self.current_search = ' '.join(args.search_term)
-                self.current_kind = 'both'  # Default to both
-                self.current_protocol = None  # Default to both protocols
-                
-                # Get tags for both ebooks and audiobooks
-                tag_ids = [
-                    self.tags['audiobooks'],
-                    self.tags['ebooks']
-                ]
+                await self._handle_headless_search(args)
+                return
 
+            # Interactive mode without arguments
+            if not args.search_term and not args.search and not args.grab:
+                await self._handle_interactive_search()
+                return
+
+            # Normal search with arguments
+            await self._handle_normal_search(args)
+
+        except Exception as e:
+            await self.handle_error(e, "Search operation")
+
+    async def _handle_headless_search(self, args):
+        """Handle headless search with unified formatting"""
+        # Store current search parameters
+        self.current_search = ' '.join(args.search_term)
+        self.current_kind = args.kind if args.kind else 'both'
+        self.current_protocol = args.protocol
+
+        # Get tag IDs based on kind argument
+        tag_ids = []
+        if not args.kind or args.kind in ('audio', 'both'):
+            tag_ids.append(self.tags['audiobooks'])
+        if not args.kind or args.kind in ('book', 'both'):
+            tag_ids.append(self.tags['ebooks'])
+
+        # Convert protocol
+        protocol = None
+        if args.protocol:
+            protocol = "usenet" if args.protocol == "nzb" else "torrent"
+
+        # Perform search
+        if self.current_search:
+            if self.debug:
+                print(f"\n🔍 Executing search with:")
+                print(f"  Term: {self.current_search}")
+                print(f"  Tags: {tag_ids}")
+                print(f"  Protocol: {protocol}")
+            
+            # Always show spinner during search
+            self.spinner.start()
+            results = await self.prowlarr.search(self.current_search, tag_ids, protocol)
+            self.spinner.stop()
+            
+            if self.debug:
+                print(f"\n📊 Results Summary:")
+                print(f"  Total results: {len(results)}")
+                print("  Protocols: " + ", ".join(set(r.get('protocol', 'unknown') for r in results)))
+                print("  Indexers: " + ", ".join(set(r.get('indexer', 'unknown') for r in results)))
+                print("──────────────────────")
+
+            if not results:
+                print("No results found")
+                return
+
+            # Save results
+            search_id = self.get_next_search_id()
+            self.save_search_results(
+                search_id, 
+                results,
+                self.current_search,
+                args.kind or 'both',
+                protocol,
+                'headless'
+            )
+
+            await self.display_results(results, search_id, True)
+
+    async def _handle_interactive_search(self):
+        """Handle interactive search with unified formatting"""
+        # Get media type from menu
+        tag_ids, kind, icon = self.show_media_type_menu()
+        
+        # Get search term
+        self._display_section("🔍 Enter Your Search Term")
+        print("✨ You can search by:")
+        print("  📝 Book title (e.g., 'The Great Gatsby')")
+        print("  👤 Author name (e.g., 'Stephen King')")
+        print("  📚 Series name (e.g., 'Harry Potter')")
+        print("\n❌ Type 'q' to quit")
+        
+        search_term = self._prompt_user("🔎 Search")
+
+        # Show searching animation
+        self._display_section("🔍 Searching through multiple sources...")
+        self.spinner.start()
+        results = await self.prowlarr.search(search_term, tag_ids, None)
+        self.spinner.stop()
+
+        if not results:
+            print("\n❌ No results found")
+            return
+
+        # Save and display results
+        search_id = self.get_next_search_id()
+        self.save_search_results(
+            search_id,
+            results,
+            search_term,
+            kind,
+            None,
+            'interactive'
+        )
+
+        await self.display_results(results, search_id, False)
+
+    async def _handle_normal_search(self, args):
+        """Handle normal search with arguments"""
+        try:
+            # Store current search parameters
+            self.current_search = ' '.join(args.search_term)
+            self.current_kind = args.kind if args.kind else 'both'
+            self.current_protocol = args.protocol
+
+            # Get tag IDs based on kind argument
+            tag_ids = []
+            if not args.kind or args.kind in ('audio', 'both'):
+                tag_ids.append(self.tags['audiobooks'])
+            if not args.kind or args.kind in ('book', 'both'):
+                tag_ids.append(self.tags['ebooks'])
+
+            # Convert protocol
+            protocol = None
+            if args.protocol:
+                protocol = "usenet" if args.protocol == "nzb" else "torrent"
+
+            # Perform search
+            if self.current_search:
                 if self.debug:
                     print(f"\n🔍 Executing search with:")
                     print(f"  Term: {self.current_search}")
                     print(f"  Tags: {tag_ids}")
-                    print(f"  Protocol: {self.current_protocol}")
-
-                # Show searching animation
-                self.spinner.start()
-                results = await self.prowlarr.search(self.current_search, tag_ids, None)
-                self.spinner.stop()
-
-                if not results:
-                    print("No results found")
-                    return
-
-                # Save results
-                search_id = self.get_next_search_id()
-                self.save_search_results(
-                    search_id,
-                    results,
-                    self.current_search,
-                    'both',
-                    None,
-                    'headless'
-                )
-
-                await self.display_results(results, search_id, True)
-                return
-
-            # If no arguments provided, go into interactive mode
-            if not args.search_term and not args.search and not args.grab:
-                # Get media type from menu
-                tag_ids, kind, icon = self.show_media_type_menu()
+                    print(f"  Protocol: {protocol}")
                 
-                # Get search term
-                while True:
-                    print("\n🔍 Enter Your Search Term:")
-                    print("─────────────────────────")
-                    print("✨ You can search by:")
-                    print("  📝 Book title (e.g., 'The Great Gatsby')")
-                    print("  👤 Author name (e.g., 'Stephen King')")
-                    print("  📚 Series name (e.g., 'Harry Potter')")
-                    print("\n❌ Type 'q' to quit")
-                    search_term = input("\n🔎 Search > ").strip()
-                    
-                    if search_term.lower() == 'q':
-                        return
-                    if search_term:
-                        break
-                    print("\n❌ Please enter a search term")
-
-                # Show searching animation
-                print("\n🔍 Searching through multiple sources...")
+                # Always show spinner during search
                 self.spinner.start()
-                results = await self.prowlarr.search(search_term, tag_ids, None)
+                results = await self.prowlarr.search(self.current_search, tag_ids, protocol)
                 self.spinner.stop()
-
+                
                 if self.debug:
                     print(f"\n📊 Results Summary:")
                     print(f"  Total results: {len(results)}")
@@ -482,80 +589,18 @@ class BookSearcher:
                     print("No results found")
                     return
 
-                # Save and display results
+                # Save results
                 search_id = self.get_next_search_id()
                 self.save_search_results(
-                    search_id,
+                    search_id, 
                     results,
-                    search_term,
-                    kind,
-                    None,
-                    'interactive'
+                    self.current_search,
+                    args.kind or 'both',
+                    protocol,
+                    'headless' if args.headless else 'interactive'
                 )
 
-                await self.display_results(results, search_id, False)
-                return
-
-            # Handle normal search with arguments
-            search_term = ' '.join(args.search_term)
-
-            try:
-                # Store current search parameters
-                self.current_search = search_term
-                self.current_kind = args.kind if args.kind else 'both'
-                self.current_protocol = args.protocol
-
-                # Get tag IDs based on kind argument
-                tag_ids = []
-                if not args.kind or args.kind in ('audio', 'both'):
-                    tag_ids.append(self.tags['audiobooks'])
-                if not args.kind or args.kind in ('book', 'both'):
-                    tag_ids.append(self.tags['ebooks'])
-
-                # Convert protocol
-                protocol = None
-                if args.protocol:
-                    protocol = "usenet" if args.protocol == "nzb" else "torrent"
-
-                # Perform search
-                if search_term:
-                    if self.debug:
-                        print(f"\n🔍 Executing search with:")
-                        print(f"  Term: {search_term}")
-                        print(f"  Tags: {tag_ids}")
-                        print(f"  Protocol: {protocol}")
-                    
-                    # Always show spinner during search
-                    self.spinner.start()
-                    results = await self.prowlarr.search(search_term, tag_ids, protocol)
-                    self.spinner.stop()
-                    
-                    if self.debug:
-                        print(f"\n📊 Results Summary:")
-                        print(f"  Total results: {len(results)}")
-                        print("  Protocols: " + ", ".join(set(r.get('protocol', 'unknown') for r in results)))
-                        print("  Indexers: " + ", ".join(set(r.get('indexer', 'unknown') for r in results)))
-                        print("──────────────────────")
-
-                    if not results:
-                        print("No results found")
-                        return
-
-                    # Save results
-                    search_id = self.get_next_search_id()
-                    self.save_search_results(
-                        search_id, 
-                        results,
-                        search_term,
-                        args.kind or 'both',
-                        protocol,
-                        'headless' if args.headless else 'interactive'
-                    )
-
-                    await self.display_results(results, search_id, args.headless)
-
-            except Exception as e:
-                await self.handle_error(e, "Search operation")
+                await self.display_results(results, search_id, args.headless)
 
         except Exception as e:
             await self.handle_error(e, "Search operation")
@@ -564,7 +609,7 @@ class BookSearcher:
         """Handle grab operation"""
         try:
             if self.debug:
-                print(f"\n🔧 Grab Operation:")
+                print(f"\n🔍 Grab Operation:")
                 print(f"  Search ID: {search_id}")
                 print(f"  Result #: {result_num}")
                 
@@ -598,164 +643,180 @@ class BookSearcher:
         except Exception as e:
             await self.handle_error(e, f"Grab operation (Search #{search_id}, Result #{result_num})")
 
+    def _format_result_size(self, size: int) -> str:
+        """Format size in bytes to human readable format"""
+        if size == 0:
+            return "N/A"
+        if size > 1024**3:
+            return f"{size/1024**3:.2f}GB"
+        elif size > 1024**2:
+            return f"{size/1024**2:.2f}MB"
+        return f"{size/1024:.2f}KB"
+
+    def _format_result_line(self, index: int, result: Dict) -> List[str]:
+        """Format a single result with detailed information and underlined title"""
+        # Calculate title with index
+        title = f"【{index}】{result['title']}"
+        
+        # Get status and icons
+        protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
+        status = f"💫 {result.get('grabs', 0)} grabs" if result.get('protocol') == "usenet" else \
+                f"🌱 {result.get('seeders', 0)} seeders" if result.get('seeders', 0) > 0 else "💀 Dead torrent"
+        
+        # Format size
+        size_str = self._format_result_size(result.get('size', 0))
+        
+        # Create the formatted output
+        output = []
+        output.append(title)
+        
+        # Calculate visual width for Unicode characters
+        visual_width = len(title)
+        # Add extra width for special Unicode characters
+        visual_width += title.count('【') + title.count('】')  # Add 1 for each bracket
+        visual_width += len([c for c in title if ord(c) > 0x2E80])  # Add 1 for each CJK character
+        
+        # Create underline with adjusted width
+        output.append("─" * visual_width)
+        
+        # Add details with consistent formatting
+        details = [
+            f"📦 Size:          {size_str}",
+            f"📅 Published:     {result.get('publishDate', 'N/A')[:10]}", 
+            f"🔌 Protocol:      {protocol_icon} {result.get('protocol', 'N/A')}", 
+            f"🔍 Indexer:       {result.get('indexer', 'N/A')}", 
+            f"⚡ Status:        {status}"
+        ]
+        
+        # Add each detail line with proper indentation
+        for detail in details:
+            output.append(f"  {detail}")
+            
+        output.append("")  # Add empty line for spacing
+        return output
+
+    def _display_search_summary(self, results: List[Dict], search_id: int) -> None:
+        """Display detailed search summary with formatting"""
+        kind_icon = self._get_kind_icon(self.current_kind)
+        proto_icon = self._get_protocol_icon(self.current_protocol)
+        
+        # Calculate statistics
+        protocols = {}
+        indexers = set()
+        for r in results:
+            proto = r.get('protocol', 'unknown')
+            protocols[proto] = protocols.get(proto, 0) + 1
+            indexers.add(r.get('indexer', 'N/A'))
+        
+        print("\n" + self.SEPARATOR_THICK)
+        print("✨ Search Summary ✨")
+        print(self.SEPARATOR_THICK)
+        
+        # Search details
+        if self.current_search:
+            print(f"🔍 Search Term:   {self.current_search}")
+            print(f"🧩 Media Type:    {kind_icon} {self.current_kind}")
+            print(f"🔌 Protocol:      {proto_icon} {self.current_protocol or 'both'}")
+        
+        # Results statistics
+        print(f"\n📊 Statistics")
+        print(self.SEPARATOR_THIN)
+        print(f"📚 Total Results: {len(results)} items")
+        
+        # Protocol breakdown
+        print("\n🔗 Available Protocols:")
+        for proto, count in protocols.items():
+            icon = "📡" if proto == "usenet" else "🧲"
+            print(f"  {icon} {proto}: {count} results")
+        
+        # Indexer information
+        print("\n🌐 Sources:")
+        for indexer in sorted(indexers):
+            print(f"  • {indexer}")
+        
+        print(self.SEPARATOR_THICK)
+
     async def display_results(self, results: List[Dict], search_id: int, headless: bool = False, interactive: bool = True):
-        if headless:
-            self._display_headless_results(results, search_id)
-            return
-
-        print("\n📚 Search Results Found 📚")
-        print("═══════════════════════")
-        print(f"Found {len(results)} items\n")
-
-        def get_visual_width(s: str) -> int:
-            """Get the visual width of a string, counting emojis as width 2"""
-            width = 0
-            for c in s:
-                if ord(c) > 0xFFFF:  # Emoji characters
-                    width += 2
-                else:
-                    width += 1
-            return width
-
+        """Display search results in a detailed, formatted view"""
+        self._display_header("📚 Search Results Found 📚")
+        
+        # Display each result in detailed format
         for i, result in enumerate(results, 1):
-            # Calculate box width based on title but with space for adjustments
-            title = f"【{i}】{result['title']}"
-            title_width = get_visual_width(title)
-            box_width = title_width + 6  # Adding more padding for adjustments
-
-            # Draw the box only around the title
-            print(f"┌{'─' * box_width}┐")
-            print(f"│ {title}{' ' * (box_width - title_width - 3)}│")
-            print(f"└{'─' * box_width}┘")
-
-            # Format info first
-            size_str = "N/A"
-            if result.get('size', 0) > 0:
-                size = result.get('size', 0)
-                if size > 1024**3:
-                    size_str = f"{size/1024**3:.2f} GB"
-                elif size > 1024**2:
-                    size_str = f"{size/1024**2:.2f} MB"
-                else:
-                    size_str = f"{size/1024:.2f} KB"
-
-            protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
-            status = f"💫 {result.get('grabs', 0)} grabs" if result.get('protocol') == "usenet" else \
-                     f"🌱 {result.get('seeders', 0)} seeders" if result.get('seeders', 0) > 0 else "💀 Dead torrent"
-
-            # Print details left-aligned
-            details = [
-                f"📦 Size:          {size_str}",
-                f"📅 Published:     {result.get('publishDate', 'N/A')[:10]}", 
-                f"🔌 Protocol:      {protocol_icon} {result.get('protocol', 'N/A')}", 
-                f"🔍 Indexer:       {result.get('indexer', 'N/A')}", 
-                f"⚡ Status:        {status}"
-            ]
-
-            # Print each detail line with consistent left alignment
-            for line in details:
-                print(f"  {line}")
-
-            print()  # Empty line between results
-
-        # Add search summary after results but before search ID
-        print("\n" + "═" * 50)
-        print("📊 Search Summary")
-        print("─" * 50)
-        print(f"🔍 Found: {len(results)} items")
-        protocols = []
-        for p in set(r.get('protocol', 'unknown') for r in results):
-            icon = "📡" if p == "usenet" else "🧲"
-            protocols.append(f"{icon} {p}")
-        print(f"🔌 Protocols: {', '.join(sorted(protocols))}")
-        print(f"🌐 Sites: {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
-        print("═" * 50)
-
-        # Then show search ID and instructions
-        print("\n" + "═" * 60)
-        print("✨ Search saved! To download later, use this ID: ✨")
+            for line in self._format_result_line(i, result):
+                print(line)
+        
+        # Show search summary
+        self._display_search_summary(results, search_id)
+        
+        # Show usage instructions
+        print("\n📝 Download Instructions")
+        print(self.SEPARATOR_THIN)
         print(f"🔑 Search ID: #{search_id}")
-        print("═" * 60)
-        print("\nTo download, use:")
-        print(f"bs -s {search_id} -g <result_number>")
+        print(f"📥 Command:   bs -s {search_id} -g <result_number>")
+        print("⏰ Note:      Results will be available for 7 days")
+        print(self.SEPARATOR_THICK)
 
-        if interactive:
+        if interactive and not headless:
             await self._handle_interactive_selection(results)
 
+    def _display_headless_results(self, results: List[Dict], search_id: int):
+        """Redirect to main display method for consistency"""
+        return self.display_results(results, search_id, headless=True, interactive=False)
+
     async def _handle_interactive_selection(self, results: List[Dict]):
-        """Handle interactive result selection"""
+        """Handle interactive result selection with unified prompts"""
         while True:
             try:
-                choice = input("\nEnter result number to download (or 'q' to quit): ")
-                if choice.lower() == 'q':
-                    return
-
+                choice = self._prompt_user("Enter result number to download (or 'q' to quit)", 
+                                         [str(i) for i in range(1, len(results) + 1)],
+                                         allow_empty=True)
+                
+                if not choice:  # Empty input
+                    continue
+                    
                 idx = int(choice) - 1
-                if 0 <= idx < len(results):
-                    selected = results[idx]
-                    await self.prowlarr.grab_release(selected['guid'], selected['indexerId'])
-                    print("\n✨ Successfully sent to download client!")
-                    print(f"📥 Title:")
-                    print(f"    {selected['title']}")
-                    # Removed the return statement here to keep the loop going
-                else:
-                    print("Invalid selection. Please try again.")
+                selected = results[idx]
+                await self.prowlarr.grab_release(selected['guid'], selected['indexerId'])
+                
+                # Show success message in a nice box
+                success_msg = "✨ Successfully sent to download client! ✨"
+                box_width = len(success_msg) + 4
+                
+                print("\n" + "┌" + "─" * (box_width-2) + "┐")
+                print(f"│ {success_msg} │")
+                print("└" + "─" * (box_width-2) + "┘")
+                
+                print(self.SEPARATOR_THIN)
+                print(f"📥 Title:    {selected['title']}")
+                print(f"📚 Kind:     {self._get_kind_icon(selected.get('kind', 'unknown'))} {selected.get('kind', 'unknown')}")
+                print(f"🔌 Protocol: {self._get_protocol_icon(selected.get('protocol'))} {selected.get('protocol', 'N/A')}")
+                print(f"🔍 Indexer:  {selected.get('indexer', 'N/A')}")
+                print(self.SEPARATOR_THICK)
+                
             except ValueError:
-                print("Please enter a valid number")
+                print("\n❌ Please enter a valid number")
             except Exception as e:
                 await self.handle_error(e, "Interactive selection")
-                # Continue the loop even after an error
 
     async def list_cached_searches(self):
-        """List all cached searches and allow interactive selection"""
+        """List cached searches with unified formatting"""
         if not os.path.exists(self.cache_dir):
-            print("No cached searches found")
+            print("\n❌ No cached searches found")
             return
 
-        searches = []
-        for entry in os.listdir(self.cache_dir):
-            if not entry.startswith('search_'):
-                continue
-
-            try:
-                sid = int(entry.split('_')[1])
-                meta_file = os.path.join(self.cache_dir, entry, 'meta.json')
-                
-                with open(meta_file) as f:
-                    meta = json.load(f)
-                
-                timestamp = datetime.fromisoformat(meta['timestamp'])
-                age = datetime.now() - timestamp
-                age_str = self._format_age(age)
-                kind_icon = self._get_kind_icon(meta['kind'])
-                
-                searches.append({
-                    'id': sid,
-                    'term': meta['search_term'],
-                    'kind': meta['kind'],
-                    'icon': kind_icon,
-                    'age': age_str,
-                    'timestamp': timestamp
-                })
-            except (ValueError, FileNotFoundError, json.JSONDecodeError):
-                continue
-
+        searches = self._get_cached_searches()
         if not searches:
-            print("No valid cached searches found")
+            print("\n❌ No valid cached searches found")
             return
 
-        # Sort by ID in ascending order (oldest first)
-        searches.sort(key=lambda x: x['id'])
-
-        print("\n📚 Cached Searches")
-        print("═══════════════════")
+        self._display_header("📚 Cached Searches")
+        
         for search in searches:
             print(f"\n[{search['id']}] {search['term']}")
             print(f"  🧩 Kind: {search['icon']} {search['kind']}")
             print(f"  ⏰ Age:  {search['age']}")
 
-        print("\n✨ To view details of a specific search, use:")
-        print("bs --list-cache <search_id>")
+        self._display_instructions("--list-cache <search_id>", "To view details of a specific search, use")
 
     async def list_cached_search_by_id(self, search_id: int):
         """List a specific cached search by ID"""
@@ -884,51 +945,37 @@ class BookSearcher:
         total = self.performance_stats['cache_hits'] + self.performance_stats['cache_misses']
         return (self.performance_stats['cache_hits'] / total * 100) if total > 0 else 0
 
-    def _display_headless_results(self, results: List[Dict], search_id: int):
-        """Display results summary in headless mode"""
-        kind_icon = self._get_kind_icon(self.current_kind)
-        proto_icon = self._get_protocol_icon(self.current_protocol)
-        
-        # Show condensed results listing
-        print("\n📚 Results:")
-        print("─" * 50)
-        for i, result in enumerate(results, 1):
-            size_str = "N/A"
-            if result.get('size', 0) > 0:
-                size = result.get('size', 0)
-                if size > 1024**3:
-                    size_str = f"{size/1024**3:.2f}GB"
-                elif size > 1024**2:
-                    size_str = f"{size/1024**2:.2f}MB"
-                else:
-                    size_str = f"{size/1024:.2f}KB"
-                    
-            protocol_icon = "📡" if result.get('protocol') == "usenet" else "🧲"
-            print(f"{i:2d}. {protocol_icon} [{size_str}] {result['title']}")
+    def _get_cached_searches(self) -> List[Dict]:
+        """Get cached searches with unified formatting"""
+        searches = []
+        for entry in os.listdir(self.cache_dir):
+            if not entry.startswith('search_'):
+                continue
 
-        # Show summary
-        print("\n" + "═" * 60)
-        print("✨ Search Summary ✨")
-        print("═" * 60)
-        print(f"🔑 Search ID:  #{search_id}")
-        print(f"🔍 Term:       {self.current_search}")
-        print(f"🧩 Kind:       {kind_icon} {self.current_kind}")
-        print(f"🔌 Protocol:   {proto_icon} {self.current_protocol or 'both'}")
-        print(f"📊 Results:    {len(results)} items found")
-        
-        # Show protocol and indexer information
-        protocols = []
-        for p in set(r.get('protocol', 'unknown') for r in results):
-            icon = "📡" if p == "usenet" else "🧲"
-            protocols.append(f"{icon} {p}")
-        print(f"🔗 Available:  {', '.join(sorted(protocols))}")
-        print(f"🌐 Sites:      {', '.join(sorted(set(r.get('indexer', 'unknown') for r in results)))}")
-        print("═" * 60)
+            try:
+                sid = int(entry.split('_')[1])
+                meta_file = os.path.join(self.cache_dir, entry, 'meta.json')
+                
+                with open(meta_file) as f:
+                    meta = json.load(f)
+                
+                timestamp = datetime.fromisoformat(meta['timestamp'])
+                age = datetime.now() - timestamp
+                age_str = self._format_age(age)
+                kind_icon = self._get_kind_icon(meta['kind'])
+                
+                searches.append({
+                    'id': sid,
+                    'term': meta['search_term'],
+                    'kind': meta['kind'],
+                    'icon': kind_icon,
+                    'age': age_str,
+                    'timestamp': timestamp
+                })
+            except (ValueError, FileNotFoundError, json.JSONDecodeError):
+                continue
 
-        print("\n📝 To download a result, use:")
-        print(f"bs -s {search_id} -g <result_number>")
-        print("\n⏰ Results will be available for 7 days")
-        print("═" * 60)
+        return searches
 
 async def main():
     searcher = BookSearcher()

@@ -18,6 +18,9 @@
     'dockerfile',
     'github-actions',
     'custom.regex',
+    'pip_requirements',
+    'pip-compile',
+    'poetry'
   ],
   customManagers: [
     {
@@ -81,6 +84,30 @@
       prCreation: 'immediate',
     },
     {
+      matchManagers: ['pip_requirements'],
+      labels: ['python-deps'],
+      rangeStrategy: 'pin',
+      commitMessagePrefix: '📦',
+      prPriority: 3,
+      stabilityDays: 3
+    },
+    {
+      matchManagers: ['dockerfile', 'docker-compose'],
+      labels: ['docker'],
+      commitMessagePrefix: '🐳',
+      prPriority: 4,
+      stabilityDays: 3,
+      updateTypes: ['minor', 'patch'],
+      automerge: true
+    },
+    {
+      matchManagers: ['dockerfile', 'docker-compose'],
+      matchUpdateTypes: ['major'],
+      labels: ['docker', 'major'],
+      commitMessagePrefix: '🐳💥',
+      dependencyDashboardApproval: true
+    },
+    {
       matchManagers: [
         'github-actions',
       ],
@@ -125,5 +152,11 @@
       'security',
     ],
     automerge: true,
+    prPriority: 5
   },
+  schedule: ['after 10pm every weekday', 'before 5am every weekday', 'every weekend'],
+  updateNotScheduled: false,
+  pip_requirements: {
+    fileMatch: ['(^|/)([\\w-]*)requirements.*\\.txt$']
+  }
 }

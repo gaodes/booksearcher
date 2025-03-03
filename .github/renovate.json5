@@ -21,7 +21,7 @@
     'custom.regex',
     'pip_requirements',
     'pip-compile',
-    'poetry'
+    'poetry',
   ],
   customManagers: [
     {
@@ -85,36 +85,66 @@
       prCreation: 'immediate',
     },
     {
-      matchSourceUrlPrefixes: ["https://github.com"],
-      matchUpdateTypes: ["patch", "minor", "major"],
-      matchCategories: ["security"],
+      matchUpdateTypes: [
+        'patch',
+        'minor',
+        'major',
+      ],
+      matchCategories: [
+        'security',
+      ],
       prPriority: 5,
-      labels: ['security'],
-      automerge: true
+      labels: [
+        'security',
+      ],
+      automerge: true,
+      matchSourceUrls: [
+        'https://github.com{/,}**',
+      ],
     },
     {
-      matchManagers: ['pip_requirements'],
-      labels: ['python-deps'],
+      matchManagers: [
+        'pip_requirements',
+      ],
+      labels: [
+        'python-deps',
+      ],
       rangeStrategy: 'pin',
       commitMessagePrefix: '📦',
       prPriority: 3,
-      stabilityDays: 3
+      minimumReleaseAge: '3 days',
     },
     {
-      matchManagers: ['dockerfile', 'docker-compose'],
-      labels: ['docker'],
+      matchManagers: [
+        'dockerfile',
+        'docker-compose',
+      ],
+      labels: [
+        'docker',
+      ],
       commitMessagePrefix: '🐳',
       prPriority: 4,
-      stabilityDays: 3,
-      updateTypes: ['minor', 'patch'],
-      automerge: true
+      minimumReleaseAge: '3 days',
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      automerge: true,
     },
     {
-      matchManagers: ['dockerfile', 'docker-compose'],
-      matchUpdateTypes: ['major'],
-      labels: ['docker', 'major'],
+      matchManagers: [
+        'dockerfile',
+        'docker-compose',
+      ],
+      matchUpdateTypes: [
+        'major',
+      ],
+      labels: [
+        'docker',
+        'major',
+      ],
       commitMessagePrefix: '🐳💥',
-      dependencyDashboardApproval: true
+      dependencyDashboardApproval: true,
     },
     {
       matchManagers: [
@@ -161,11 +191,17 @@
     labels: [
       'security',
     ],
-    automerge: true
+    automerge: true,
   },
-  schedule: ['after 10pm every weekday', 'before 5am every weekday', 'every weekend'],
+  schedule: [
+    'after 10pm every weekday',
+    'before 5am every weekday',
+    'every weekend',
+  ],
   updateNotScheduled: false,
   pip_requirements: {
-    fileMatch: ['(^|/)([\\w-]*)requirements.*\\.txt$']
-  }
+    fileMatch: [
+      '(^|/)([\\w-]*)requirements.*\\.txt$',
+    ],
+  },
 }

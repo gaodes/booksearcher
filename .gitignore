@@ -13,6 +13,7 @@ env/
 .vscode/
 .idea/
 *.swp
+.cursor/
 
 # Distribution / packaging
 dist/

@@ -93,9 +93,12 @@
         'digest',
       ],
       automerge: true,
+      automergeSchedule: [
+        'after 12am and before 5am',
+      ],
       labels: [
-        'docker',
         'automerge',
+        'daily',
       ],
       commitMessagePrefix: '📦',
       commitMessageTopic: '{{depName}}',

@@ -20,7 +20,7 @@
   enabledManagers: [
     'docker-compose',
     'github-actions',
-    'pip',
+    'pip_requirements',
     'dockerfile',
     'npm',
   ],
@@ -83,7 +83,7 @@
     {
       matchManagers: [
         'docker-compose',
-        'pip',
+        'pip_requirements',
         'dockerfile',
         'npm',
       ],
@@ -109,7 +109,7 @@
       matchManagers: [
         'github-actions',
         'docker-compose',
-        'pip',
+        'pip_requirements',
         'dockerfile',
         'npm',
       ],
@@ -135,7 +135,7 @@
     {
       matchManagers: [
         'docker-compose',
-        'pip',
+        'pip_requirements',
         'dockerfile',
         'npm',
       ],
@@ -163,7 +163,7 @@
     {
       matchManagers: [
         'docker-compose',
-        'pip',
+        'pip_requirements',
         'dockerfile',
         'npm',
       ],

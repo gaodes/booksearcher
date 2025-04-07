@@ -1,6 +1,6 @@
 aiohttp==3.11.16
 python-dotenv==1.0.1
-pydantic==2.10.6
+pydantic==2.11.2
 psutil==7.0.0
 backoff==2.2.1
 PyYAML==6.0.2

@@ -1,53 +1,40 @@
 {
-  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
     'config:recommended',
-    ':dependencyDashboard',
-    ':ignoreUnstable',
-    ':separateMajorReleases',
-    ':maintainLockFilesWeekly',
-    'docker:enableMajor',
-    ':semanticCommits',
-    ':enableVulnerabilityAlertsWithLabel',
-  ],
-  assignees: [
-    'gaodes',
-  ],
-  assignAutomerge: false,
-  enabledManagers: [
-    'docker-compose',
-    'dockerfile',
-    'github-actions',
-    'custom.regex',
-    'pip_requirements',
-    'pip-compile',
-    'poetry',
-  ],
-  customManagers: [
-    {
-      customType: 'regex',
-      fileMatch: [
-        '.*\\.xml$',
-      ],
-      matchStrings: [
-        '\\<Repository\\>(?<depName>[^:]+):(?<currentValue>[^<]+)\\<\\/Repository\\>',
-      ],
-      datasourceTemplate: 'docker',
-      versioningTemplate: 'docker',
-    },
   ],
   timezone: 'Europe/Bucharest',
   dependencyDashboard: true,
+  dependencyDashboardTitle: '🤖 Dependency Dashboard',
+  prCreation: 'immediate',
+  prHourlyLimit: 25,
+  prConcurrentLimit: 10,
   automergeType: 'pr',
   automergeStrategy: 'merge-commit',
-  rebaseWhen: 'conflicted',
+  rebaseWhen: 'auto',
+  rebaseLabel: 'rebase',
   rangeStrategy: 'pin',
   semanticCommitType: 'chore',
   semanticCommitScope: 'deps',
   separateMajorMinor: true,
   separateMultipleMajor: true,
-  prConcurrentLimit: 0,
-  prHourlyLimit: 25,
+  enabledManagers: [
+    'docker-compose',
+    'github-actions',
+    'pip',
+    'dockerfile',
+    'npm',
+  ],
+  schedule: [
+    'at any time',
+  ],
+  assignAutomerge: true,
+  assignees: [
+    'gaodes',
+  ],
+  platformAutomerge: true,
+  platformCommit: 'enabled',
+  automerge: true,
+  ignoreTests: true,
   commitBody: 'For more details, see {{sourceUrl}}',
   prBodyColumns: [
     'Package',
@@ -56,152 +43,149 @@
     'Change',
     'References',
   ],
+  prBodyNotes: [
+    '{{#if isMajor}}🚨 MAJOR UPDATE - Please review carefully 🚨{{/if}}',
+    '{{#if isDigest}}🔒 Security update: Updating to new digest{{/if}}',
+    '🔗 Source: {{sourceUrl}}',
+    '📝 Release Notes: {{#if releaseNotes}}{{{releaseNotes}}}{{else}}No release notes provided{{/if}}',
+    '{{#if hasReleaseNotes}}📋 [Changelog]({{{releaseNotes}}}){{/if}}',
+    '{{#if isDigest}}🔍 New digest: `{{{newDigestShort}}}`{{/if}}',
+    '{{#if isMajor}}🔥 Breaking changes may require manual intervention{{/if}}',
+    '{{#if isMinor}}✨ New features and improvements included{{/if}}',
+    '{{#if isPatch}}🛠️ Bug fixes and minor improvements{{/if}}',
+  ],
   ignorePaths: [
-    '_archive/**',
+    '_unused/**',
   ],
   packageRules: [
+    // GitHub Actions - Patch and Minor Updates
     {
       matchManagers: [
         'github-actions',
       ],
+      matchUpdateTypes: [
+        'patch',
+        'minor',
+      ],
+      automerge: true,
       labels: [
         'github-actions',
+        'automerge',
       ],
       commitMessagePrefix: '⚙️',
       commitMessageTopic: '{{depName}}',
-      prBodyNotes: [
-        'Action source: {{sourceUrl}}',
+      commitMessageExtra: '{{#if isPatch}}(patch){{else}}(minor){{/if}} to {{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}',
+      assignees: [
+        'gaodes',
       ],
-      schedule: [
-        'at any time',
-      ],
-      automerge: true,
-      automergeSchedule: [
-        'at any time',
-      ],
-      ignoreTests: true,
-      platformAutomerge: true,
-      recreateWhen: 'always',
-      prCreation: 'immediate',
     },
+    // Docker Compose - Patch, Minor, and Digest Updates
     {
+      matchManagers: [
+        'docker-compose',
+        'pip',
+        'dockerfile',
+        'npm',
+      ],
       matchUpdateTypes: [
         'patch',
         'minor',
-        'major',
-      ],
-      matchCategories: [
-        'security',
-      ],
-      prPriority: 5,
-      labels: [
-        'security',
+        'digest',
       ],
       automerge: true,
-      matchSourceUrls: [
-        'https://github.com{/,}**',
-      ],
-    },
-    {
-      matchManagers: [
-        'pip_requirements',
-      ],
       labels: [
-        'python-deps',
+        'docker',
+        'automerge',
       ],
-      rangeStrategy: 'pin',
       commitMessagePrefix: '📦',
-      prPriority: 3,
-      minimumReleaseAge: '3 days',
+      commitMessageTopic: '{{depName}}',
+      commitMessageExtra: '{{#if isDigest}}(digest){{else}}{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
+      assignees: [
+        'gaodes',
+      ],
     },
-    {
-      matchManagers: [
-        'dockerfile',
-        'docker-compose',
-      ],
-      labels: [
-        'docker',
-      ],
-      commitMessagePrefix: '🐳',
-      prPriority: 4,
-      minimumReleaseAge: '3 days',
-      matchUpdateTypes: [
-        'minor',
-        'patch',
-      ],
-      automerge: true,
-    },
-    {
-      matchManagers: [
-        'dockerfile',
-        'docker-compose',
-      ],
-      matchUpdateTypes: [
-        'major',
-      ],
-      labels: [
-        'docker',
-        'major',
-      ],
-      commitMessagePrefix: '🐳💥',
-      dependencyDashboardApproval: true,
-    },
+    // Major Updates - Manual Review Required
     {
       matchManagers: [
         'github-actions',
+        'docker-compose',
+        'pip',
+        'dockerfile',
+        'npm',
       ],
       matchUpdateTypes: [
         'major',
       ],
-      addLabels: [
+      automerge: false,
+      reviewers: [
+        'gaodes',
+      ],
+      labels: [
         'major',
         'breaking-change',
       ],
       commitMessagePrefix: '💥',
-      automerge: false,
-      dependencyDashboardApproval: true,
-    },
-    {
-      matchManagers: [
-        'github-actions',
-      ],
-      matchUpdateTypes: [
-        'minor',
-      ],
-      addLabels: [
-        'github-actions',
-        'minor',
+      commitMessageTopic: '{{depName}}',
+      commitMessageExtra: '(major) to v{{{newMajor}}}',
+      assignees: [
+        'gaodes',
       ],
     },
+    // Essential Services - Weekly Updates
     {
       matchManagers: [
-        'github-actions',
+        'docker-compose',
+        'pip',
+        'dockerfile',
+        'npm',
+      ],
+      matchPackageNames: [
+
       ],
       matchUpdateTypes: [
         'patch',
+        'minor',
+        'digest'
       ],
       addLabels: [
-        'github-actions',
-        'patch',
+        'essential',
+        'weekly',
       ],
+      automerge: true,
+      automergeSchedule: [
+        'before 5am on sunday',
+      ],
+      commitMessagePrefix: '📦🚦',
+      commitMessageTopic: '{{depName}}',
+      commitMessageExtra: '{{#if isDigest}}(digest){{else}}{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
+    },
+    // Non-Essential Services - Daily Updates
+    {
+      matchManagers: [
+        'docker-compose',
+        'pip',
+        'dockerfile',
+        'npm',
+      ],
+      matchPackageNames: [
+
+       ],
+      matchUpdateTypes: [
+        'patch',
+        'minor',
+        'digest'
+      ],
+      addLabels: [
+        'non-essential',
+        'daily',
+      ],
+      automerge: true,
+      automergeSchedule: [
+        'after 12am and before 5am',
+      ],
+      commitMessagePrefix: '📦🚀',
+      commitMessageTopic: '{{depName}}',
+      commitMessageExtra: '{{#if isDigest}}(digest){{else}}{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
     },
   ],
-  vulnerabilityAlerts: {
-    enabled: true,
-    labels: [
-      'security',
-    ],
-    automerge: true,
-  },
-  schedule: [
-    'after 10pm every weekday',
-    'before 5am every weekday',
-    'every weekend',
-  ],
-  updateNotScheduled: false,
-  pip_requirements: {
-    fileMatch: [
-      '(^|/)([\\w-]*)requirements.*\\.txt$',
-    ],
-  },
 }

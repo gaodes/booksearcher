@@ -45,11 +45,9 @@
   ],
   prBodyNotes: [
     '{{#if isMajor}}🚨 MAJOR UPDATE - Please review carefully 🚨{{/if}}',
-    '{{#if isDigest}}🔒 Security update: Updating to new digest{{/if}}',
     '🔗 Source: {{sourceUrl}}',
     '📝 Release Notes: {{#if releaseNotes}}{{{releaseNotes}}}{{else}}No release notes provided{{/if}}',
     '{{#if hasReleaseNotes}}📋 [Changelog]({{{releaseNotes}}}){{/if}}',
-    '{{#if isDigest}}🔍 New digest: `{{{newDigestShort}}}`{{/if}}',
     '{{#if isMajor}}🔥 Breaking changes may require manual intervention{{/if}}',
     '{{#if isMinor}}✨ New features and improvements included{{/if}}',
     '{{#if isPatch}}🛠️ Bug fixes and minor improvements{{/if}}',
@@ -94,7 +92,7 @@
       ],
       automerge: true,
       automergeSchedule: [
-        'after 12am and before 5am',
+        'before 5am on monday',
       ],
       labels: [
         'automerge',
@@ -102,7 +100,7 @@
       ],
       commitMessagePrefix: '📦',
       commitMessageTopic: '{{depName}}',
-      commitMessageExtra: '{{#if isDigest}}(digest){{else}}{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
+      commitMessageExtra: '{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
       assignees: [
         'gaodes',
       ],
@@ -160,7 +158,7 @@
       ],
       commitMessagePrefix: '📦🚦',
       commitMessageTopic: '{{depName}}',
-      commitMessageExtra: '{{#if isDigest}}(digest){{else}}{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
+      commitMessageExtra: '{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
     },
     // Non-Essential Services - Daily Updates
     {
@@ -171,8 +169,8 @@
         'npm',
       ],
       matchPackageNames: [
-
-       ],
+        // Add more non-essential services here
+      ],
       matchUpdateTypes: [
         'patch',
         'minor',
@@ -188,7 +186,23 @@
       ],
       commitMessagePrefix: '📦🚀',
       commitMessageTopic: '{{depName}}',
-      commitMessageExtra: '{{#if isDigest}}(digest){{else}}{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
+      commitMessageExtra: '{{#if isPatch}}(patch){{else}}{{#if isMinor}}(minor){{else}}(major){{/if}}{{/if}}{{/if}} to {{#if isDigest}}{{{newDigestShort}}}{{else}}{{#if isMajor}}v{{{newMajor}}}{{else}}{{{newVersion}}}{{/if}}{{/if}}',
+    },
+    // Images with Latest Tag Only
+    {
+      matchManagers: [
+        'docker-compose',
+      ],
+      matchPackageNames: [
+        // Add more images with latest tag here
+      ],
+      matchCurrentValue: 'latest',
+      versioning: 'docker',
+      extractVersion: '^(?<version>.*)$',
+      allowedVersions: 'latest',
+      addLabels: [
+        'latest',
+      ],
     },
   ],
 }
